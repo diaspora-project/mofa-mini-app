@@ -13,7 +13,7 @@ RUN conda update -n base conda \
     && conda env create --file environment-cpu.yml
 
 SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
-RUN conda install -y redis mongodb
+RUN conda install -y redis mongodb cudatoolkit
 
 WORKDIR /mof-generation-at-scale
 
