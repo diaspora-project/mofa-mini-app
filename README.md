@@ -27,7 +27,7 @@ module load apptainer
   
 2. Pull image from Github Registry
 ```
-echo <personal_access_token> | apptainer remote login -u valhayot --password-stdin docker://ghcr.io
+echo <personal_access_token> | apptainer remote login -u <github_username> --password-stdin docker://ghcr.io
 apptainer pull docker://ghcr.io/diaspora-project/mofa-mini-app:main
 ```
 
