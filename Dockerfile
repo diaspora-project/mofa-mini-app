@@ -6,6 +6,8 @@ RUN apt-get update
 
 RUN git clone https://github.com/globus-labs/mof-generation-at-scale.git
 
+COPY environment-cuda11.yml mof-generation-at-scale/envs/
+
 RUN conda update -n base conda \
     && conda install -n base conda-libmamba-solver \
     && conda config --set solver libmamba \
