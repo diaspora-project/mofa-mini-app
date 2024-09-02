@@ -10,10 +10,10 @@ RUN conda update -n base conda \
     && conda install -n base conda-libmamba-solver \
     && conda config --set solver libmamba \
     && cd mof-generation-at-scale/envs \
-    && conda env create --file environment-cpu.yml
+    && conda env create --file environment-cuda11.yml
 
 SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
-RUN conda install -y redis mongodb cudatoolkit
+RUN conda install -y redis mongodb
 
 WORKDIR /mof-generation-at-scale
 
