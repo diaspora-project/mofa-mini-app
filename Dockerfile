@@ -6,13 +6,11 @@ RUN apt-get update
 
 RUN git clone https://github.com/globus-labs/mof-generation-at-scale.git
 
-COPY environment-cuda11.yml mof-generation-at-scale/envs/
-
 RUN conda update -n base conda \
     && conda install -n base conda-libmamba-solver \
     && conda config --set solver libmamba \
     && cd mof-generation-at-scale/envs \
-    && conda env create --file environment-cuda11.yml
+    && conda env create --file environment-cpu.yml
 
 SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
 RUN conda install -y redis mongodb

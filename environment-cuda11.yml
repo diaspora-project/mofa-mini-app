@@ -39,6 +39,8 @@ dependencies:
   - mongodb
   - mongo-tools
 
+  - lammps
+
   - pip
   - pip:
     - git+https://gitlab.com/ase/ase.git
