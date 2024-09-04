@@ -1,0 +1,23 @@
+FROM continuumio/miniconda3:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update
+
+RUN git clone https://github.com/globus-labs/mof-generation-at-scale.git
+
+COPY environment-cuda11.yml /mof-generation-at-scale/envs/environment-cuda11.yml
+
+RUN conda update -n base conda \
+    && conda install -n base conda-libmamba-solver \
+    && conda config --set solver libmamba \
+    && cd mof-generation-at-scale/envs \
+    && conda env create --file environment-cuda11.yml
+
+# delete dir as apptainer won't use it
+RUN rm -rf /mof-generation-at-scale
+
+SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
+RUN conda install -y redis mongodb
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "example-parallel-run.sh"]
