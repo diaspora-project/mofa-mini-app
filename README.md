@@ -32,7 +32,7 @@ docker tag ghcr.io/diaspora-project/mofa-mini-app:gpu mofa-gpu
 docker run --rm --gpus all mofa
 ```
 
-#### Apptainer on Polaris [Not currently working]
+#### Apptainer on Polaris
 
 To run on Polaris, it is recommended to follow instructions for running Apptainer on Polaris provided [here](https://docs.alcf.anl.gov/polaris/data-science-workflows/containers/containers/).
 
