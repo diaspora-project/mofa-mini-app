@@ -48,8 +48,23 @@ echo <personal_access_token> | apptainer remote login -u <github_username> --pas
 export APPTAINER_TMPDIR=/local/scratch # have more space available for building image
 apptainer build --fakeroot --force mofa docker://ghcr.io/diaspora-project/mofa-mini-app:gpu
 ```
-
-3. Run container to execute application
+3. Clone and cd to the MOFa code
 ```
-apptainer run mofa
+git clone https://github.com/globus-labs/mof-generation-at-scale.git
+cd mof-generation-at-scale
+```
+
+4. Generate required input files in apptainer environment (optional, if files have already been generated)
+```
+cd input-files/zn-paddle-pillar
+apptainer exec mofa /bin/bash
+source activate mofa
+python assemble_inputs.py
+exit
+cd ../../
+```
+
+5. Run container from mof-generation-at-scale root dir to execute application
+```
+apptainer run --nv ../mofa
 ```
