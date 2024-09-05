@@ -14,10 +14,11 @@ RUN conda update -n base conda \
     && cd mof-generation-at-scale/envs \
     && conda env create --file environment-cuda11.yml
 
-# delete dir as apptainer won't use it
-RUN rm -rf /mof-generation-at-scale
-
 SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
 RUN conda install -y redis mongodb
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "example-parallel-run.sh"]
+COPY run_mini_app.sh /mof-generation-at-scale/
+
+LABEL org.opencontainers.image.source=https://github.com/diaspora-project/mofa-mini-app
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "/mof-generation-at-scale/run_mini_app.sh"]
