@@ -29,7 +29,7 @@ docker tag ghcr.io/diaspora-project/mofa-mini-app:gpu mofa-gpu
 ```
 2. Run container to execute application
 ```
-docker run --rm --gpus all mofa
+docker run --rm --gpus all mofa-gpu
 ```
 
 ### Apptainer on Polaris (GPU)
