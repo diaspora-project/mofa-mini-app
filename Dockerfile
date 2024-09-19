@@ -6,16 +6,17 @@ RUN apt-get update
 
 RUN git clone https://github.com/globus-labs/mof-generation-at-scale.git
 
+WORKDIR /mof-generation-at-scale
+
+RUN git checkout mini-app-dev
+
 RUN conda update -n base conda \
     && conda install -n base conda-libmamba-solver \
     && conda config --set solver libmamba \
-    && cd mof-generation-at-scale/envs \
-    && conda env create --file environment-cpu.yml
+    && conda env create --file envs/environment-cpu.yml
 
 SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
 RUN conda install -y redis mongodb
-
-WORKDIR /mof-generation-at-scale
 
 RUN cd input-files/zn-paddle-pillar && python assemble_inputs.py
 
