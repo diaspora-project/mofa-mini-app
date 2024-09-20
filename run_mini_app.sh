@@ -14,7 +14,8 @@ python run_parallel_workflow.py \
       --simulation-budget 4 \
       --redis-host 127.0.0.1 \
       --dft-opt-steps 0 \
-      --compute-config local
+      --compute-config local \
+      --launch-option $OCTOPUS_LAUNCH_OPTION
 
 #python run_serial_workflow.py \
 #      --node-path input-files/zn-paddle-pillar/node.json \

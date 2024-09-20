@@ -68,3 +68,62 @@ cd ../../
 ```
 apptainer run --nv ../mofa
 ```
+
+
+## Developing the MOFA Mini App Before Publishing to GitHub Registry
+
+### Building the Docker Image
+
+To build the Docker image, run:
+
+```bash
+docker build --platform linux/amd64 -t mofa-app .
+```
+
+> **Note:** Use the `--no-cache` option to force a rebuild and avoid using cached layers.
+
+### Running the TaskServer Docker Container
+
+To run the TaskServer container, set the necessary environment variables and execute the `docker run` command:
+
+```bash
+# Set launch option for TaskServer
+export OCTOPUS_LAUNCH_OPTION=server
+
+# Set AWS credentials and Kafka bootstrap servers
+export OCTOPUS_AWS_ACCESS_KEY_ID=<Your_AWS_Access_Key_ID>
+export OCTOPUS_AWS_SECRET_ACCESS_KEY=<Your_AWS_Secret_Access_Key>
+export OCTOPUS_BOOTSTRAP_SERVERS=b-1-public.diaspora.fy49oq.c9.kafka.us-east-1.amazonaws.com:9198,b-2-public.diaspora.fy49oq.c9.kafka.us-east-1.amazonaws.com:9198
+
+# Run the Docker container
+docker run --platform linux/amd64 \
+  -e OCTOPUS_LAUNCH_OPTION \
+  -e OCTOPUS_AWS_ACCESS_KEY_ID \
+  -e OCTOPUS_AWS_SECRET_ACCESS_KEY \
+  -e OCTOPUS_BOOTSTRAP_SERVERS \
+  mofa-app
+```
+
+### Running the Thinker Docker Container
+
+To run the Thinker container, use the following steps:
+
+```bash
+# Set launch option for Thinker
+export OCTOPUS_LAUNCH_OPTION=thinker
+
+# Set AWS credentials and Kafka bootstrap servers
+export OCTOPUS_AWS_ACCESS_KEY_ID=<Your_AWS_Access_Key_ID>
+export OCTOPUS_AWS_SECRET_ACCESS_KEY=<Your_AWS_Secret_Access_Key>
+export OCTOPUS_BOOTSTRAP_SERVERS=b-1-public.diaspora.fy49oq.c9.kafka.us-east-1.amazonaws.com:9198,b-2-public.diaspora.fy49oq.c9.kafka.us-east-1.amazonaws.com:9198
+
+# Run the Docker container
+docker run --platform linux/amd64 \
+  -e OCTOPUS_LAUNCH_OPTION \
+  -e OCTOPUS_AWS_ACCESS_KEY_ID \
+  -e OCTOPUS_AWS_SECRET_ACCESS_KEY \
+  -e OCTOPUS_BOOTSTRAP_SERVERS \
+  mofa-app
+```
+
+> **Note:** Replace `<Your_AWS_Access_Key_ID>` and `<Your_AWS_Secret_Access_Key>` with your actual AWS credentials.

@@ -8,7 +8,7 @@ RUN git clone https://github.com/globus-labs/mof-generation-at-scale.git
 
 WORKDIR /mof-generation-at-scale
 
-RUN git checkout mini-app-dev
+RUN git checkout octopus
 
 RUN conda update -n base conda \
     && conda install -n base conda-libmamba-solver \
