@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  taskserver:
+    image: mofa-app
+    platform: linux/amd64
+    environment:
+      - OCTOPUS_LAUNCH_OPTION=server
+      - OCTOPUS_AWS_ACCESS_KEY_ID=${OCTOPUS_AWS_ACCESS_KEY_ID}
+      - OCTOPUS_AWS_SECRET_ACCESS_KEY=${OCTOPUS_AWS_SECRET_ACCESS_KEY}
+      - OCTOPUS_BOOTSTRAP_SERVERS=${OCTOPUS_BOOTSTRAP_SERVERS}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis-service
+
+  thinker:
+    image: mofa-app
+    platform: linux/amd64
+    environment:
+      - OCTOPUS_LAUNCH_OPTION=thinker
+      - OCTOPUS_AWS_ACCESS_KEY_ID=${OCTOPUS_AWS_ACCESS_KEY_ID}
+      - OCTOPUS_AWS_SECRET_ACCESS_KEY=${OCTOPUS_AWS_SECRET_ACCESS_KEY}
+      - OCTOPUS_BOOTSTRAP_SERVERS=${OCTOPUS_BOOTSTRAP_SERVERS}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis-service
+
+  redis-service:
+    image: redis:latest
+    ports:
+      - "6379:6379"
