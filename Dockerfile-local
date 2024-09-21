@@ -4,19 +4,32 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
 
-COPY ./mof-generation-at-scale /mof-generation-at-scale
-
-WORKDIR /mof-generation-at-scale
+COPY environment-local.yml .
 
 RUN conda update -n base conda \
     && conda install -n base conda-libmamba-solver \
     && conda config --set solver libmamba \
-    && conda env create --file envs/environment-cpu.yml
+    && conda env create --file environment-local.yml
 
 SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
 RUN conda install -y redis mongodb
 
-RUN cd input-files/zn-paddle-pillar && python assemble_inputs.py
+COPY ./mof-generation-at-scale /mof-generation-at-scale
+
+WORKDIR /mof-generation-at-scale
+
+RUN conda env update --name mofa --file envs/environment-cpu.yml
+
+# List the contents of the directory to verify
+RUN ls -l input-files/zn-paddle-pillar
+
+# Check if node.json exists, and generate it if it doesn't
+RUN if [ ! -f input-files/zn-paddle-pillar/node.json ]; then \
+        echo "node.json does not exist in input-files/zn-paddle-pillar, generating..."; \
+        cd input-files/zn-paddle-pillar && python assemble_inputs.py; \
+    else \
+        echo "node.json exists."; \
+    fi
 
 COPY run_mini_app.sh .
 COPY config.py mofa/hpc/
