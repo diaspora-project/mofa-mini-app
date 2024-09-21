@@ -2,13 +2,23 @@
 
 ## Building the Docker Image
 
-To build the Docker image, run:
+### Option 1. Building the Docker Image from GitHub
+
 
 ```bash
-docker build --platform linux/amd64 -t mofa-app .
+docker build --platform linux/amd64 --no-cache -t mofa-app .
 ```
 
-> **Note:** Use the `--no-cache` option to force a rebuild and avoid using cached layers.
+> **Note:** The `--no-cache` flag ensures that the image is built from scratch without using any cached layers, ensuring that the latest dependencies are pulled and installed.
+
+### Option 2. Building the Docker Image from a Local Copy
+
+```bash
+docker build -f Dockerfile-local --platform linux/amd64 -t mofa-app .
+```
+
+> **Note:** Make sure that the `mof-generation-at-scale` folder exists in the current directory before running this command. If you have made local changes, this approach will incorporate those changes into the Docker image.
+
 
 ## Running Thinker and TaskServer in One Container
 
