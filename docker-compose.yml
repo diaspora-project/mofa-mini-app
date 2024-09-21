@@ -9,8 +9,12 @@ services:
       - OCTOPUS_AWS_ACCESS_KEY_ID=${OCTOPUS_AWS_ACCESS_KEY_ID}
       - OCTOPUS_AWS_SECRET_ACCESS_KEY=${OCTOPUS_AWS_SECRET_ACCESS_KEY}
       - OCTOPUS_BOOTSTRAP_SERVERS=${OCTOPUS_BOOTSTRAP_SERVERS}
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis-service
       - REDIS_PORT=6379
+    deploy:
+      resources:
+        limits:
+          memory: 12g
     depends_on:
       - redis-service
 
@@ -22,8 +26,12 @@ services:
       - OCTOPUS_AWS_ACCESS_KEY_ID=${OCTOPUS_AWS_ACCESS_KEY_ID}
       - OCTOPUS_AWS_SECRET_ACCESS_KEY=${OCTOPUS_AWS_SECRET_ACCESS_KEY}
       - OCTOPUS_BOOTSTRAP_SERVERS=${OCTOPUS_BOOTSTRAP_SERVERS}
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis-service
       - REDIS_PORT=6379
+    deploy:
+      resources:
+        limits:
+          memory: 12g
     depends_on:
       - redis-service
 
