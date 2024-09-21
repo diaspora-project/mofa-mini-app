@@ -20,9 +20,6 @@ WORKDIR /mof-generation-at-scale
 
 RUN conda env update --name mofa --file envs/environment-cpu.yml
 
-# List the contents of the directory to verify
-RUN ls -l input-files/zn-paddle-pillar
-
 # Check if node.json exists, and generate it if it doesn't
 RUN if [ ! -f input-files/zn-paddle-pillar/node.json ]; then \
         echo "node.json does not exist in input-files/zn-paddle-pillar, generating..."; \

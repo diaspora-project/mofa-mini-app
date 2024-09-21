@@ -14,7 +14,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 12g
+          memory: 24g
     depends_on:
       - redis-service
 
@@ -31,7 +31,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 12g
+          memory: 24g
     depends_on:
       - redis-service
 

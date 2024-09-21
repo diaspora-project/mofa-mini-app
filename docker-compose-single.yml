@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  docker:
+    image: mofa-app
+    platform: linux/amd64
+    environment:
+      - OCTOPUS_LAUNCH_OPTION=both
+      - OCTOPUS_AWS_ACCESS_KEY_ID=${OCTOPUS_AWS_ACCESS_KEY_ID}
+      - OCTOPUS_AWS_SECRET_ACCESS_KEY=${OCTOPUS_AWS_SECRET_ACCESS_KEY}
+      - OCTOPUS_BOOTSTRAP_SERVERS=${OCTOPUS_BOOTSTRAP_SERVERS}
+      - REDIS_HOST=redis-service
+      - REDIS_PORT=6379
+    deploy:
+      resources:
+        limits:
+          memory: 24g
+    depends_on:
+      - redis-service
+
+  redis-service:
+    image: redis:latest
+    ports:
+      - "6379:6379"

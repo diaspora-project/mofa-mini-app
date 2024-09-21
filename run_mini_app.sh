@@ -1,18 +1,13 @@
 #!/bin/bash
 
-# Default Redis host is the service name in Docker Compose
-redis_host="redis-service" 
-
 LAUNCH_OPTION=""
 
 if [ "$OCTOPUS_LAUNCH_OPTION" == "thinker" ]; then
-    LAUNCH_OPTION="--launch-option thinker"
+    LAUNCH_OPTION="thinker"
 elif [ "$OCTOPUS_LAUNCH_OPTION" == "server" ]; then
-    LAUNCH_OPTION="--launch-option server"
+    LAUNCH_OPTION="server"
 else
-    LAUNCH_OPTION="--launch-option both"
-    redis-server --daemonize yes
-    redis_host="127.0.0.1"
+    LAUNCH_OPTION="both"
 fi
 
 python run_parallel_workflow.py \
@@ -25,7 +20,7 @@ python run_parallel_workflow.py \
       --num-samples 8 \
       --gen-batch-size 64 \
       --simulation-budget 4 \
-      --redis-host $redis_host \
+      --redis-host redis-service \
       --dft-opt-steps 0 \
       --compute-config local \
-      $LAUNCH_OPTION
+      --launch-option $LAUNCH_OPTION
