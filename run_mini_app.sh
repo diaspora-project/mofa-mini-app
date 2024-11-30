@@ -12,6 +12,8 @@ fi
 
 ensure_endpoint() {
     endpoint_name=$1
+    endpoint_port=${2:-8765}
+
     output=$(proxystore-endpoint list)
     echo "$output"
 
@@ -19,7 +21,7 @@ ensure_endpoint() {
     uuid=$(echo "$output" | grep "^${endpoint_name} " | rev | cut -d " " -f1 | rev)
 
     if [[ -z $uuid ]]; then
-        proxystore-endpoint configure "$endpoint_name"
+        proxystore-endpoint configure "$endpoint_name" --port $endpoint_port
 
         output=$(proxystore-endpoint list)
         echo "$output"
@@ -54,7 +56,7 @@ ensure_endpoint() {
     # cat "$log_file"
 }
 
-ensure_endpoint my-endpoint
+ensure_endpoint my-endpoint $PROXYSTORE_ENDPOINT_PORT
 
 python run_parallel_workflow.py \
       --node-path input-files/zn-paddle-pillar/node.json \

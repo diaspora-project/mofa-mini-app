@@ -35,6 +35,7 @@ RUN if [ ! -f input-files/zn-paddle-pillar/node.json ]; then \
     fi
 
 COPY run_mini_app.sh .
+COPY ensure_endpoint.sh .
 COPY config.py mofa/hpc/
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "run_mini_app.sh"]
