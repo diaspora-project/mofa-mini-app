@@ -20,6 +20,12 @@ WORKDIR /mof-generation-at-scale
 
 RUN conda env update --name mofa --file envs/environment-cpu.yml
 
+RUN pip install --upgrade aws-msk-iam-sasl-signer-python
+RUN pip install --upgrade confluent_kafka
+# by default, colmena 0.6 installs proxystore 0.6.5, 
+# we want proxystore 0.7.1 (latest) for confluent_kafka streaming support
+RUN pip install --upgrade "proxystore[all]" 
+
 # Check if node.json exists, and generate it if it doesn't
 RUN if [ ! -f input-files/zn-paddle-pillar/node.json ]; then \
         echo "node.json does not exist in input-files/zn-paddle-pillar, generating..."; \
