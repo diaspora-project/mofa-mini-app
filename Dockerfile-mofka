@@ -1,0 +1,62 @@
+FROM ghcr.io/mochi-hpc/mochi-spack-buildcache:mofka-0.4.0-rs6ayj44kn3f5payxelz3gqtcb2mwszf.spack
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update
+RUN apt-get install -y git
+
+ENV PATH="/root/miniconda3/bin:${PATH}"
+ARG PATH="/root/miniconda3/bin:${PATH}"
+
+# copied from https://stackoverflow.com/questions/58269375/how-to-install-packages-with-miniconda-in-dockerfile
+# Install wget to fetch Miniconda
+RUN apt-get update && \
+    apt-get install -y wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Miniconda on x86 or ARM platforms
+RUN arch=$(uname -m) && \
+    if [ "$arch" = "x86_64" ]; then \
+    MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"; \
+    elif [ "$arch" = "aarch64" ]; then \
+    MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh"; \
+    else \
+    echo "Unsupported architecture: $arch"; \
+    exit 1; \
+    fi && \
+    wget $MINICONDA_URL -O miniconda.sh && \
+    mkdir -p /root/.conda && \
+    bash miniconda.sh -b -p /root/miniconda3 && \
+    rm -f miniconda.sh
+
+RUN git clone https://github.com/globus-labs/mof-generation-at-scale.git /mofa
+
+WORKDIR /mofa
+
+RUN git checkout proxystream-mofka
+
+COPY env.yml /mofa/env.yml
+
+RUN conda update -n base conda \
+    && conda install -n base conda-libmamba-solver -y \
+    && conda config --set solver libmamba \
+    && conda env create --file env.yml
+
+SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
+RUN conda install -y redis mongodb
+
+RUN pip install --upgrade aws-msk-iam-sasl-signer-python
+RUN pip install --upgrade confluent_kafka
+RUN pip install --upgrade "proxystore[all] @ git+https://github.com/proxystore/proxystore.git"
+RUN pip install --upgrade "git+https://github.com/proxystore/extensions.git@exchange"
+RUN pip install ConfigSpace
+RUN cd input-files/zn-paddle-pillar && python assemble_inputs.py
+
+COPY run_mini_app.sh .
+COPY ensure_endpoint.sh .
+COPY config.py mofa/hpc/
+COPY mofka_config.json .
+COPY launch_mofka.sh .
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "run_mini_app.sh" ]

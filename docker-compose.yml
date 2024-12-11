@@ -1,3 +1,8 @@
+networks:
+  shared-net:
+    driver: bridge
+volumes:
+  mofa:
 services:
   taskserver:
     image: mofa-app
@@ -10,6 +15,17 @@ services:
       - PROXYSTORE_GLOBUS_CLIENT_ID=${PROXYSTORE_GLOBUS_CLIENT_ID}
       - PROXYSTORE_GLOBUS_CLIENT_SECRET=${PROXYSTORE_GLOBUS_CLIENT_SECRET}
       - PROXYSTORE_ENDPOINT_PORT=8765
+      - STREAM_ENGINE=${STREAM_ENGINE}
+      - MOFKA_GROUPFILE=${MOFKA_GROUPFILE}
+      - MOFKA_PROTOCOL=${MOFKA_PROTOCOL}
+    networks:
+      - shared-net
+    volumes:
+      - mofa:/mnt/mofa
+    depends_on:
+      bedrock:
+        condition: service_healthy
+        restart: true
     deploy:
       resources:
         limits:
@@ -26,7 +42,43 @@ services:
       - PROXYSTORE_GLOBUS_CLIENT_ID=${PROXYSTORE_GLOBUS_CLIENT_ID}
       - PROXYSTORE_GLOBUS_CLIENT_SECRET=${PROXYSTORE_GLOBUS_CLIENT_SECRET}
       - PROXYSTORE_ENDPOINT_PORT=8764
+      - STREAM_ENGINE=${STREAM_ENGINE}
+      - MOFKA_GROUPFILE=${MOFKA_GROUPFILE}
+      - MOFKA_PROTOCOL=${MOFKA_PROTOCOL}
+    volumes:
+      - mofa:/mnt/mofa
+    networks:
+      - shared-net
+    depends_on:
+      bedrock:
+        condition: service_healthy
+        restart: true
     deploy:
       resources:
         limits:
           memory: 24g
+  bedrock:
+    image: mofa-app
+    platform: linux/amd64
+    environment:
+      - MOFKA_GROUPFILE=${MOFKA_GROUPFILE}
+      - MOFKA_PROTOCOL=${MOFKA_PROTOCOL}
+    volumes:
+      - mofa:/mnt/mofa
+    networks:
+      - shared-net
+    entrypoint:
+      - conda #./launch_mofka.sh
+    command:
+      - run
+      - --no-capture-output
+      - -n
+      - mofa
+      - /bin/bash
+      - /mofa/launch_mofka.sh #"/mofa/launch_mofka.sh"
+    healthcheck:
+      test: ["CMD-SHELL", "ls /mnt/mofa/mofka.json"]
+      interval: 5s
+      retries: 3
+      start_period: 5s
+      timeout: 1s
