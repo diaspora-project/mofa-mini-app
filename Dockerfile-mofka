@@ -36,12 +36,12 @@ WORKDIR /mofa
 
 RUN git checkout proxystream-mofka
 
-COPY env.yml /mofa/env.yml
+COPY environment.yml /mofa/environment.yml
 
 RUN conda update -n base conda \
     && conda install -n base conda-libmamba-solver -y \
     && conda config --set solver libmamba \
-    && conda env create --file env.yml
+    && conda env create --file environment.yml
 
 SHELL ["conda", "run", "--no-capture-output", "-n", "mofa", "/bin/bash", "-c"]
 RUN conda install -y redis mongodb
