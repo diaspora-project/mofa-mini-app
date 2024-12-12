@@ -60,7 +60,6 @@ ensure_endpoint my-endpoint $PROXYSTORE_ENDPOINT_PORT
 if [ ${STREAM_ENGINE} = "mofka" ]
 then
     export LD_LIBRARY_PATH="$(find /home/runner/work/  -type d -name "lib" -print | tr '\n' ':'q):${LD_LIBRARY_PATH}"
-    start_mofka
 fi
 
 python run_parallel_workflow.py \

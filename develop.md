@@ -29,10 +29,11 @@
 ###  1.1. <a name='Option1.BuildingtheDockerimagefromGitHubsmof-generation-at-scalerepository'></a>Option 1. Building the Docker image from GitHub's `mof-generation-at-scale` repository
 
 ```bash
-docker build --platform linux/amd64 --no-cache -t mofa-app .
+docker build --no-cache -t mofa-app -f Dockerfile-mofka .
 ```
 
 > **Note:** The `--no-cache` flag ensures that the image is built from scratch without using any cached layers, ensuring that the latest dependencies are pulled and installed.
+> **Note:** Remember to specify `--platform linux/arm64` if running on an ARM device. Currently, this does not work with the base image, however.
 
 ###  1.2. <a name='Option2.BuildingtheDockerimagefromalocalcopyoftherepository'></a>Option 2. Building the Docker image from a local copy of the repository
 
@@ -45,10 +46,12 @@ docker build -f Dockerfile-local --platform linux/amd64 -t mofa-app .
 
 ##  2. <a name='Settingupenvironmentvariables'></a>Setting up environment variables
 
-Create a `.env` file in the same directory as your Dockerfile with the following content (or ask Haochen or Valerie for this file):
+Create a `.env` file in the same directory as your Dockerfile with the following content (or ask Haochen or Valerie for this file). It is important to note that the contents of this file will differ depending on whether you use *octopus* or *mofka*:
 
+#### Octopus .env file
 ```env
 # .env file
+STREAM_ENGINE="octopus"
 OCTOPUS_AWS_ACCESS_KEY_ID=<Your_AWS_Access_Key_ID>
 OCTOPUS_AWS_SECRET_ACCESS_KEY=<Your_AWS_Secret_Access_Key>
 OCTOPUS_BOOTSTRAP_SERVERS=b-1-public.diaspora.fy49oq.c9.kafka.us-east-1.amazonaws.com:9198,b-2-public.diaspora.fy49oq.c9.kafka.us-east-1.amazonaws.com:9198
@@ -58,7 +61,18 @@ PROXYSTORE_GLOBUS_CLIENT_SECRET=...
 
 Replace `<Your_AWS_Access_Key_ID>`, `<Your_AWS_Secret_Access_Key>`, `<PROXYSTORE_GLOBUS_CLIENT_ID>`, and `<PROXYSTORE_GLOBUS_CLIENT_SECRET>` with your actual AWS and Globus credentials (ask Haochen or Valerie).
 
-##  3. <a name='RecreateTopicswiththemofa_test2PrefixontheKafka-UIConsole'></a>Recreate Topics with the `mofa_test2` Prefix on the Kafka-UI Console
+#### Mofka .env file
+```env
+# .env file
+STREAM_ENGINE="mofka"
+PROXYSTORE_GLOBUS_CLIENT_ID=...
+PROXYSTORE_GLOBUS_CLIENT_SECRET=...
+MOFKA_GROUPFILE="/mnt/mofa/mofka.json"
+MOFKA_PROTOCOL="tcp"
+```
+> **Note:** `MOFKA_GROUPFILE` location should not have to be changed and this environment option will likely be removed.
+
+##  3. <a name='RecreateTopicswiththemofa_test2PrefixontheKafka-UIConsole'></a>Recreate Topics with the `mofa_test2` Prefix on the Kafka-UI Console (**Octopus execution only**)
 
 This step must be performed **before starting each experiment**.
 
