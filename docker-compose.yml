@@ -9,15 +9,8 @@ services:
     platform: linux/amd64
     environment:
       - OCTOPUS_LAUNCH_OPTION=server
-      - OCTOPUS_AWS_ACCESS_KEY_ID=${OCTOPUS_AWS_ACCESS_KEY_ID}
-      - OCTOPUS_AWS_SECRET_ACCESS_KEY=${OCTOPUS_AWS_SECRET_ACCESS_KEY}
-      - OCTOPUS_BOOTSTRAP_SERVERS=${OCTOPUS_BOOTSTRAP_SERVERS}
-      - PROXYSTORE_GLOBUS_CLIENT_ID=${PROXYSTORE_GLOBUS_CLIENT_ID}
-      - PROXYSTORE_GLOBUS_CLIENT_SECRET=${PROXYSTORE_GLOBUS_CLIENT_SECRET}
-      - PROXYSTORE_ENDPOINT_PORT=8765
-      - STREAM_ENGINE=${STREAM_ENGINE}
-      - MOFKA_GROUPFILE=${MOFKA_GROUPFILE}
-      - MOFKA_PROTOCOL=${MOFKA_PROTOCOL}
+    env_file:
+      - .env
     networks:
       - shared-net
     volumes:
@@ -36,15 +29,8 @@ services:
     platform: linux/amd64
     environment:
       - OCTOPUS_LAUNCH_OPTION=thinker
-      - OCTOPUS_AWS_ACCESS_KEY_ID=${OCTOPUS_AWS_ACCESS_KEY_ID}
-      - OCTOPUS_AWS_SECRET_ACCESS_KEY=${OCTOPUS_AWS_SECRET_ACCESS_KEY}
-      - OCTOPUS_BOOTSTRAP_SERVERS=${OCTOPUS_BOOTSTRAP_SERVERS}
-      - PROXYSTORE_GLOBUS_CLIENT_ID=${PROXYSTORE_GLOBUS_CLIENT_ID}
-      - PROXYSTORE_GLOBUS_CLIENT_SECRET=${PROXYSTORE_GLOBUS_CLIENT_SECRET}
-      - PROXYSTORE_ENDPOINT_PORT=8764
-      - STREAM_ENGINE=${STREAM_ENGINE}
-      - MOFKA_GROUPFILE=${MOFKA_GROUPFILE}
-      - MOFKA_PROTOCOL=${MOFKA_PROTOCOL}
+    env_file:
+      - .env
     volumes:
       - mofa:/mnt/mofa
     networks:
@@ -60,11 +46,11 @@ services:
   bedrock:
     image: mofa-app
     platform: linux/amd64
-    environment:
-      - MOFKA_GROUPFILE=${MOFKA_GROUPFILE}
-      - MOFKA_PROTOCOL=${MOFKA_PROTOCOL}
     volumes:
       - mofa:/mnt/mofa
+      - $PWD:/mofa
+    env_file:
+      - .env
     networks:
       - shared-net
     entrypoint:
