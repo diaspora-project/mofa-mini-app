@@ -2,7 +2,7 @@
 
 ---
 
-### 1. Additional Setup (Before Running the Workflow)
+### 1. Setup Before Running the Workflow
 
 **1.1. Checkout Correct Git Branch**
 
@@ -20,14 +20,14 @@ LD_LIBRARY_PATH=/home/cc/libtorch/lib:$LD_LIBRARY_PATH ./bin/lmp -h | grep mace
 **1.3. Prepare Input Files**
 
 ```bash
-cd /home/cc/mof-generation-at-scale/input-files/zn-paddle-pillar
+cd ~/mof-generation-at-scale/input-files/zn-paddle-pillar
 python assemble_inputs.py
 ```
 
 **1.4. Download MACE Model**
 
 ```bash
-cd /home/cc/mof-generation-at-scale/input-files/mace
+cd ~/mof-generation-at-scale/input-files/mace
 ./get-macemp-0a.sh
 ```
 
@@ -75,25 +75,20 @@ python playwright-reset-topic-headless.py
 
 ---
 
-### 2. Run MOFA Workflow with `OctopusQueues`
+## 2. Run MOFA Workflow with `OctopusQueues`
 
-**2.1. Set Kafka Credentials**
+### 2.1. Install Dependencies
 
-Install dependencies:
+Install the Kafka client library:
+
 ```bash
 pip install "diaspora-event-sdk[kafka-python]"
 ```
 
-Create `octopus-secrets.sh` in `~/mof-generation-at-scale`:
-```bash
-export OCTOPUS_AWS_ACCESS_KEY_ID=...
-export OCTOPUS_AWS_SECRET_ACCESS_KEY=...
-export OCTOPUS_BOOTSTRAP_SERVERS=...
-```
-
-**2.2. Configure Workflow Script**
+### 2.2. Configure Workflow Script
 
 Edit `example-parallel-run.sh` in `~/mof-generation-at-scale`:
+
 ```bash
 python run_parallel_workflow.py \
   --node-path input-files/zn-paddle-pillar/node.json \
@@ -112,50 +107,113 @@ python run_parallel_workflow.py \
   --dft-opt-steps 2
 ```
 
-**2.3. Execute the Workflow**
+### 2.3. Set Queue Backend
+
+In `run_parallel_workflow.py`, import and instantiate `OctopusQueues`:
+
+```python
+from mofa.octopus import OctopusQueues
+
+queues = OctopusQueues(
+    topics=['generation', 'lammps', 'cp2k', 'training', 'assembly'],
+)
+```
+
+### 2.4. Set Kafka Credentials
+
+Create `octopus-secrets.sh` in `~/mof-generation-at-scale`:
 
 ```bash
+export OCTOPUS_AWS_ACCESS_KEY_ID=...
+export OCTOPUS_AWS_SECRET_ACCESS_KEY=...
+export OCTOPUS_BOOTSTRAP_SERVERS=...
+```
+
+### 2.5. Reset Kafka Topics
+
+Reset Kafka topics using Playwright:
+
+```bash
+source ~/mofa-mini-app/playwright-secrets.sh
+python ~/mofa-mini-app/playwright-reset-topic-headless.py
+```
+
+### 2.6. Prepare Yourself
+
+Take a deep breath — you're almost there.
+
+### 2.7. Execute the Workflow
+
+```bash
+cd ~/mof-generation-at-scale
 source octopus-secrets.sh
 ./example-parallel-run.sh
 ```
 
----
+## 3. Run MOFA Workflow with `ProxyQueues`
 
-### 3. Run MOFA Workflow with `ProxyQueues`
+### 3.1. Install Dependencies
 
-**3.1. Install and Configure ProxyStore**
+Install ProxyStore and Kafka dependencies:
 
 ```bash
 pip install --upgrade "proxystore[all]" confluent-kafka aws-msk-iam-sasl-signer-python
 ```
 
-Create `proxystream-secrets.sh` in `~/mofa-mini-app`:
+### 3.2. Configure Workflow Script
+
+Same as [2.2](#22-configure-workflow-script) — edit `example-parallel-run.sh` accordingly.
+
+### 3.3. Set Queue Backend
+
+In `run_parallel_workflow.py`, import and instantiate `ProxyQueues`:
+
+```python
+from mofa.proxyqueue import ProxyQueues
+
+queues = ProxyQueues(
+    topics=['generation', 'lammps', 'cp2k', 'training', 'assembly'],
+)
+```
+
+### 3.4. Set Secrets
+
+- Use the same `octopus-secrets.sh` as in [2.4](#24-set-kafka-credentials).
+- Additionally, create `proxystream-secrets.sh` in `~/mofa-mini-app`:
+
 ```bash
 export PROXYSTORE_GLOBUS_CLIENT_ID=...
 export PROXYSTORE_GLOBUS_CLIENT_SECRET=...
 ```
 
-Start and verify ProxyStore endpoint:
+### 3.5. Reset Kafka Topics
+
+Same as [2.5](#25-reset-kafka-topics).
+
+### 3.6. Start ProxyStore Endpoint
+
+Start and verify the endpoint:
+
 ```bash
 source ~/mofa-mini-app/proxystream-secrets.sh
 source ~/mofa-mini-app/ensure_endpoint.sh
 echo $PROXYSTORE_ENDPOINT
 ```
 
-> If endpoint fails to start, update `proxystore-endpoint configure` in `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
+> **Note:** If the endpoint fails to start, modify `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
 
-**3.2. Reset Kafka Topics and Run Workflow**
+### 3.7. Execute the Workflow
+
+Same as [2.7](#27-execute-the-workflow):
 
 ```bash
-source ~/mofa-mini-app/playwright-secrets.sh
-python ~/mofa-mini-app/playwright-reset-topic-headless.py
-
-cd ~/mofa-mini-app
+cd ~/mof-generation-at-scale
 source octopus-secrets.sh
 ./example-parallel-run.sh
 ```
+---
 
-**3.3. Troubleshooting MongoDB Errors**
+### 4. Troubleshooting MongoDB Errors
 
 If you see MongoDB errors during execution:
 ```bash
