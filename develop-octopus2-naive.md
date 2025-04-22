@@ -77,7 +77,13 @@ python playwright-reset-topic-headless.py
 
 ### 2. Run Example MOFA Workflow
 
-**2.1. Set Up AWS + Kafka Secrets**
+**2.1. Set Up Kafka Dependencies and Secrets**
+
+Install dependencies (only once):
+```bash
+pip install "diaspora-event-sdk[kafka-python]"
+```
+
 Create `octopus-secrets.sh`:
 ```bash
 export OCTOPUS_AWS_ACCESS_KEY_ID=...
