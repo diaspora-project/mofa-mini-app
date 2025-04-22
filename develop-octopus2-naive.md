@@ -53,14 +53,14 @@ class LocalConfig(HPCConfig):
 
 **1.7. Reset `mofa_test2` Kafka Topics**
 
-Install dependencies (only once):
+In a separate virtual environemnt from `mofa` (due to dependency conflicts), install:
 ```bash
 pip install playwright
 playwright install-deps
 playwright install chromium
 ```
 
-Create `playwright-secrets.sh`:
+Create `playwright-secrets.sh` in `~/mofa-mini-app`:
 ```bash
 export TOPIC_USERNAME="your_username"
 export TOPIC_PASSWORD="your_password"
@@ -75,16 +75,16 @@ python playwright-reset-topic-headless.py
 
 ---
 
-### 2. Run Example MOFA Workflow
+### 2. Run MOFA Workflow with `OctopusQueues`
 
-**2.1. Set Up Kafka Dependencies and Secrets**
+**2.1. Set Kafka Credentials**
 
-Install dependencies (only once):
+Install dependencies:
 ```bash
 pip install "diaspora-event-sdk[kafka-python]"
 ```
 
-Create `octopus-secrets.sh`:
+Create `octopus-secrets.sh` in `~/mof-generation-at-scale`:
 ```bash
 export OCTOPUS_AWS_ACCESS_KEY_ID=...
 export OCTOPUS_AWS_SECRET_ACCESS_KEY=...
@@ -93,8 +93,7 @@ export OCTOPUS_BOOTSTRAP_SERVERS=...
 
 **2.2. Configure Workflow Script**
 
-Edit `~/mof-generation-at-scale/example-parallel-run.sh`:
-
+Edit `example-parallel-run.sh` in `~/mof-generation-at-scale`:
 ```bash
 python run_parallel_workflow.py \
   --node-path input-files/zn-paddle-pillar/node.json \
@@ -113,9 +112,55 @@ python run_parallel_workflow.py \
   --dft-opt-steps 2
 ```
 
-**2.3. Run the Workflow**
+**2.3. Execute the Workflow**
 
 ```bash
 source octopus-secrets.sh
 ./example-parallel-run.sh
+```
+
+---
+
+### 3. Run MOFA Workflow with `ProxyQueues`
+
+**3.1. Install and Configure ProxyStore**
+
+```bash
+pip install --upgrade "proxystore[all]" confluent-kafka aws-msk-iam-sasl-signer-python
+```
+
+Create `proxystream-secrets.sh` in `~/mofa-mini-app`:
+```bash
+export PROXYSTORE_GLOBUS_CLIENT_ID=...
+export PROXYSTORE_GLOBUS_CLIENT_SECRET=...
+```
+
+Start and verify ProxyStore endpoint:
+```bash
+source ~/mofa-mini-app/proxystream-secrets.sh
+source ~/mofa-mini-app/ensure_endpoint.sh
+echo $PROXYSTORE_ENDPOINT
+```
+
+> If endpoint fails to start, update `proxystore-endpoint configure` in `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
+
+**3.2. Reset Kafka Topics and Run Workflow**
+
+```bash
+source ~/mofa-mini-app/playwright-secrets.sh
+python ~/mofa-mini-app/playwright-reset-topic-headless.py
+
+cd ~/mofa-mini-app
+source octopus-secrets.sh
+./example-parallel-run.sh
+```
+
+**3.3. Troubleshooting MongoDB Errors**
+
+If you see MongoDB errors during execution:
+```bash
+sudo systemctl stop mongod
+sudo rm -rf /var/lib/mongodb/*
+sudo systemctl start mongod
+sudo systemctl status mongod
 ```

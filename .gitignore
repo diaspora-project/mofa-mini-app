@@ -1,3 +1,4 @@
 .env
 *.log
 /mof-generation-at-scale
+*secrets.sh
