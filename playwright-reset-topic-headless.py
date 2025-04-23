@@ -59,7 +59,7 @@ def run(playwright: Playwright) -> None:
         
         # Navigate to topics page
         print("\nNavigating to topics page...")
-        topics_url = f"{BASE_URL}/ui/clusters/diaspora/all-topics?perPage=25&q=mofa"
+        topics_url = f"{BASE_URL}/ui/clusters/diaspora/all-topics?perPage=25&q=mofa_test2"
         response = page.goto(topics_url)
         if not response or response.status != 200:
             raise Exception(f"Failed to load topics page. Status: {response.status if response else 'No response'}")

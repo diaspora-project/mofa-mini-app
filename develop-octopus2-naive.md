@@ -255,4 +255,15 @@ sed -i '111,113d' ~/mof-generation-at-scale/run_parallel_workflow.py
 sed -i "110r $tmp_file" ~/mof-generation-at-scale/run_parallel_workflow.py
 
 rm "$tmp_file"
+
+
+$MOFA_RUN proxystore-endpoint list
+$MOFA_RUN source ensure_endpoint.sh 
+
+export PROXYSTORE_ENDPOINT=$(cat proxystore_endpoint_uuid.txt)
+echo $PROXYSTORE_ENDPOINT
+
+cd ~/mof-generation-at-scale
+$MOFA_RUN ./example-parallel-run.sh
+
 ```

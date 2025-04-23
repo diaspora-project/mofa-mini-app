@@ -8,6 +8,9 @@ RUN chmod +x /root/octopus2-indocker.sh
 COPY octopus2-secrets.sh /root/octopus2-secrets.sh
 RUN chmod +x /root/octopus2-secrets.sh
 
+COPY ensure_endpoint.sh /root/ensure_endpoint.sh
+RUN chmod +x /root/ensure_endpoint.sh
+
 COPY example-parallel-run.sh /root/example-parallel-run.sh
 RUN chmod +x /root/example-parallel-run.sh
 
