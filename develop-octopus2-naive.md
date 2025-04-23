@@ -222,3 +222,37 @@ sudo rm -rf /var/lib/mongodb/*
 sudo systemctl start mongod
 sudo systemctl status mongod
 ```
+
+
+### 5.1. Docker build
+```bash
+docker build -t octopus2 -f Dockerfile-octopus2 .
+docker run -it octopus2
+```
+
+Inside the container, check installation status:
+```bash
+cat /var/log/mofa-install.log
+```
+
+```bash
+cd ~/mof-generation-at-scale
+$MOFA_RUN ./example-parallel-run.sh
+```
+
+### 5.2 Docker switch mode
+
+```bash
+
+tmp_file=$(mktemp)
+cat <<'EOF' > "$tmp_file"
+    queues = ProxyQueues(
+        topics=['generation', 'lammps', 'cp2k', 'training', 'assembly'],
+    )
+EOF
+
+sed -i '111,113d' ~/mof-generation-at-scale/run_parallel_workflow.py
+sed -i "110r $tmp_file" ~/mof-generation-at-scale/run_parallel_workflow.py
+
+rm "$tmp_file"
+```

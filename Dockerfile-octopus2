@@ -1,0 +1,15 @@
+# Dockerfile based on Ubuntu 22.04 (the OS version is important to Mofka and MOFA)
+
+FROM ghcr.io/mochi-hpc/mochi-spack-buildcache:mofka-0.6.4-6jvujfbrsndd4aqsxc5ag4uicyjnkkxp.spack
+
+COPY octopus2-indocker.sh /root/octopus2-indocker.sh
+RUN chmod +x /root/octopus2-indocker.sh
+
+COPY octopus2-secrets.sh /root/octopus2-secrets.sh
+RUN chmod +x /root/octopus2-secrets.sh
+
+COPY example-parallel-run.sh /root/example-parallel-run.sh
+RUN chmod +x /root/example-parallel-run.sh
+
+RUN echo 'source /root/octopus2-indocker.sh' >> /root/.bashrc
+ENTRYPOINT ["/bin/bash"]
