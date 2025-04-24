@@ -1,9 +1,3 @@
-# In octopus2-indocker.sh, at the top
-if [ -f /var/log/mofa-install.log ]; then
-    echo "MOFA environment already installed. Skipping setup."
-    return
-fi
-
 # Suppress interactive apt prompts
 export DEBIAN_FRONTEND=noninteractive
 
@@ -27,8 +21,6 @@ cd /root # this is needed because the initial directory is the root directory (/
 git clone https://github.com/globus-labs/mof-generation-at-scale.git
 cd mof-generation-at-scale/
 git checkout octopus2
-mv /root/octopus2-secrets.sh /root/mof-generation-at-scale/
-source /root/mof-generation-at-scale/octopus2-secrets.sh
 mv /root/example-parallel-run.sh /root/mof-generation-at-scale/
 
 # Setup conda environment
@@ -93,7 +85,7 @@ tmp_file=$(mktemp)
 cat <<'EOF' > "$tmp_file"
     torch_device = 'cpu'
     lammps_env = {}
-    lammps_cmd = ( 'LD_LIBRARY_PATH=/home/cc/libtorch/lib:$LD_LIBRARY_PATH /home/cc/lammps/build-mace/bin/lmp', )
+    lammps_cmd = ( 'LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ~/lammps/build-mace/bin/lmp', )
 EOF
 
 sed -i '94,96d' ~/mof-generation-at-scale/mofa/hpc/config.py

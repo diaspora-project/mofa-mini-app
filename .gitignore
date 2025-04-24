@@ -2,3 +2,4 @@
 *.log
 /mof-generation-at-scale
 *secrets.sh
+secrets.env

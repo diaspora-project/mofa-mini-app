@@ -14,7 +14,7 @@ git checkout octopus2
 **1.2. Verify LAMMPS with MACE Support**
 
 ```bash
-LD_LIBRARY_PATH=/home/cc/libtorch/lib:$LD_LIBRARY_PATH ./bin/lmp -h | grep mace
+LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ./bin/lmp -h | grep mace
 ```
 
 **1.3. Prepare Input Files**
@@ -46,9 +46,7 @@ class LocalConfig(HPCConfig):
     """Single-worker config for testing."""
     torch_device = 'cpu'
     lammps_env = {}
-    lammps_cmd = (
-        'LD_LIBRARY_PATH=/home/cc/libtorch/lib:$LD_LIBRARY_PATH /home/cc/lammps/build-mace/bin/lmp',
-    )
+    lammps_cmd = ( 'LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ~/lammps/build-mace/bin/lmp', )
 ```
 
 **1.7. Reset `mofa_test2` Kafka Topics**
@@ -224,26 +222,30 @@ sudo systemctl status mongod
 ```
 
 
-### 5.1. Docker build
+### 5.1. Docker Build and Run
+
+Build the container and run it with secrets injected from an `.env` file:
 ```bash
 docker build -t octopus2 -f Dockerfile-octopus2 .
-docker run -it octopus2
+docker run --env-file=secrets.env -it octopus2
 ```
 
-Inside the container, check installation status:
+Once inside the container, verify environment setup and installation log:
 ```bash
+echo $OCTOPUS_BOOTSTRAP_SERVERS
 cat /var/log/mofa-install.log
 ```
 
+You should already be inside the `mofa` conda environment. To start the MOFA workflow:
 ```bash
 cd ~/mof-generation-at-scale
-$MOFA_RUN ./example-parallel-run.sh
+./example-parallel-run.sh
 ```
 
-### 5.2 Docker switch mode
+### 5.2. Switch to `ProxyQueues` Mode
 
+To switch the workflow to use `ProxyQueues` instead of `OctopusQueues`, run the code below to update the relevant lines in `run_parallel_workflow.py`:
 ```bash
-
 tmp_file=$(mktemp)
 cat <<'EOF' > "$tmp_file"
     queues = ProxyQueues(
@@ -255,14 +257,17 @@ sed -i '111,113d' ~/mof-generation-at-scale/run_parallel_workflow.py
 sed -i "110r $tmp_file" ~/mof-generation-at-scale/run_parallel_workflow.py
 
 rm "$tmp_file"
+```
 
-
-$MOFA_RUN proxystore-endpoint list
-$MOFA_RUN source ensure_endpoint.sh 
-
-export PROXYSTORE_ENDPOINT=$(cat proxystore_endpoint_uuid.txt)
+Set up the ProxyStore endpoint:
+```bash
+source ~/ensure_endpoint.sh 
 echo $PROXYSTORE_ENDPOINT
+```
 
+Then run the MOFA workflow:
+
+```bash
 cd ~/mof-generation-at-scale
 $MOFA_RUN ./example-parallel-run.sh
 

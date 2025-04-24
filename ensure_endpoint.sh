@@ -30,7 +30,6 @@ ensure_endpoint() {
 
     # Export environment variable so other tools can use the endpoint
     export PROXYSTORE_ENDPOINT="$uuid"
-    echo "$uuid" > proxystore_endpoint_uuid.txt
     echo "PROXYSTORE_ENDPOINT is set to: $PROXYSTORE_ENDPOINT"
 
     # Start the endpoint (idempotent)
