@@ -4,11 +4,18 @@
 
 ### 1. Setup Before Running the Workflow
 
-**1.1. Checkout Correct Git Branch**
+**1.1. Checkout Correct Git Branch and Install Dependencies**
 
 ```bash
 cd ~/mof-generation-at-scale
 git checkout octopus2
+```
+
+Install the Kafka client library:
+
+```bash
+pip install "diaspora-event-sdk[kafka-python]"
+pip install --upgrade "proxystore[all]" confluent-kafka aws-msk-iam-sasl-signer-python
 ```
 
 **1.2. Verify LAMMPS with MACE Support**
@@ -49,41 +56,20 @@ class LocalConfig(HPCConfig):
     lammps_cmd = ( 'LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ~/lammps/build-mace/bin/lmp', )
 ```
 
-**1.7. Reset `mofa_test2` Kafka Topics**
+**1.7. Set Octopus and ProxyStream Credentials**
 
-In a separate virtual environemnt from `mofa` (due to dependency conflicts), install:
-```bash
-pip install playwright
-playwright install-deps
-playwright install chromium
-```
-
-Create `playwright-secrets.sh` in `~/mofa-mini-app`:
-```bash
-export TOPIC_USERNAME="your_username"
-export TOPIC_PASSWORD="your_password"
-export TOPIC_BASE_URL="http://kafbat-url"
-```
-
-Run reset script:
-```bash
-source playwright-secrets.sh
-python playwright-reset-topic-headless.py
-```
-
----
-
-## 2. Run MOFA Workflow with `OctopusQueues`
-
-### 2.1. Install Dependencies
-
-Install the Kafka client library:
+Create `secrets.sh` in `~/mof-generation-at-scale`:
 
 ```bash
-pip install "diaspora-event-sdk[kafka-python]"
+export OCTOPUS_AWS_ACCESS_KEY_ID=...
+export OCTOPUS_AWS_SECRET_ACCESS_KEY=...
+export OCTOPUS_BOOTSTRAP_SERVERS=...
+
+export PROXYSTORE_GLOBUS_CLIENT_ID=...
+export PROXYSTORE_GLOBUS_CLIENT_SECRET=...
 ```
 
-### 2.2. Configure Workflow Script
+**1.8. Configure Workflow Script**
 
 Edit `example-parallel-run.sh` in `~/mof-generation-at-scale`:
 
@@ -102,95 +88,78 @@ python run_parallel_workflow.py \
   --compute-config "local" \
   --mace-model-path ./input-files/mace/mace-mp0_medium-lammps.pt \
   --md-timesteps 1000 \
-  --dft-opt-steps 2
+  --dft-opt-steps 2 \
+  --launch-option $LAUCH_OPTION \
+  --queue-type $QUEUE_TYPE
 ```
 
-### 2.3. Set Queue Backend
+**1.9. Reset `mofa_test2` Kafka Topics**
 
-In `run_parallel_workflow.py`, import and instantiate `OctopusQueues`:
-
-```python
-from mofa.octopus import OctopusQueues
-
-queues = OctopusQueues(
-    topics=['generation', 'lammps', 'cp2k', 'training', 'assembly'],
-)
-```
-
-### 2.4. Set Kafka Credentials
-
-Create `octopus-secrets.sh` in `~/mof-generation-at-scale`:
-
+In a separate virtual environemnt from `mofa` (due to dependency conflicts), install:
 ```bash
-export OCTOPUS_AWS_ACCESS_KEY_ID=...
-export OCTOPUS_AWS_SECRET_ACCESS_KEY=...
-export OCTOPUS_BOOTSTRAP_SERVERS=...
+pip install playwright
+playwright install-deps
+playwright install chromium
 ```
 
-### 2.5. Reset Kafka Topics
+Create `playwright-secrets.sh` in `~/mofa-mini-app`:
+```bash
+export TOPIC_USERNAME="your_username"
+export TOPIC_PASSWORD="your_password"
+export TOPIC_BASE_URL="http://kafbat-url"
+```
 
-Reset Kafka topics using Playwright:
+---
+
+## 2. Run MOFA Workflow with `OctopusQueues`
+
+### 2.1. Reset Kafka Topics
+
+Use Playwright to clear existing Kafka topics:
 
 ```bash
 source ~/mofa-mini-app/playwright-secrets.sh
 python ~/mofa-mini-app/playwright-reset-topic-headless.py
 ```
 
-### 2.6. Prepare Yourself
+### 2.2. Launch Thinker and Server
 
-Take a deep breath — you're almost there.
+Use two separate terminals to run the workflow.
 
-### 2.7. Execute the Workflow
+**Terminal 1: Launch Thinker**
 
 ```bash
 cd ~/mof-generation-at-scale
-source octopus-secrets.sh
-./example-parallel-run.sh
+source secrets.sh
+LAUCH_OPTION=thinker QUEUE_TYPE=octopus ./example-parallel-run.sh
 ```
+
+**Terminal 2: Launch Server**
+
+```bash
+cd ~/mof-generation-at-scale
+source secrets.sh
+LAUCH_OPTION=server QUEUE_TYPE=octopus ./example-parallel-run.sh
+```
+
+> Ensure both terminals use the same environment and configuration settings.
+
+---
 
 ## 3. Run MOFA Workflow with `ProxyQueues`
 
-### 3.1. Install Dependencies
+### 3.1. Reset Kafka Topics
 
-Install ProxyStore and Kafka dependencies:
-
-```bash
-pip install --upgrade "proxystore[all]" confluent-kafka aws-msk-iam-sasl-signer-python
-```
-
-### 3.2. Configure Workflow Script
-
-Same as [2.2](#22-configure-workflow-script) — edit `example-parallel-run.sh` accordingly.
-
-### 3.3. Set Queue Backend
-
-In `run_parallel_workflow.py`, import and instantiate `ProxyQueues`:
-
-```python
-from mofa.proxyqueue import ProxyQueues
-
-queues = ProxyQueues(
-    topics=['generation', 'lammps', 'cp2k', 'training', 'assembly'],
-)
-```
-
-### 3.4. Set Secrets
-
-- Use the same `octopus-secrets.sh` as in [2.4](#24-set-kafka-credentials).
-- Additionally, create `proxystream-secrets.sh` in `~/mofa-mini-app`:
+Reset topics again before switching to `ProxyQueues`:
 
 ```bash
-export PROXYSTORE_GLOBUS_CLIENT_ID=...
-export PROXYSTORE_GLOBUS_CLIENT_SECRET=...
+source ~/mofa-mini-app/playwright-secrets.sh
+python ~/mofa-mini-app/playwright-reset-topic-headless.py
 ```
 
-### 3.5. Reset Kafka Topics
+### 3.2. Start the ProxyStore Endpoint
 
-Same as [2.5](#25-reset-kafka-topics).
-
-### 3.6. Start ProxyStore Endpoint
-
-Start and verify the endpoint:
+Initialize the ProxyStore endpoint and export the ID **in two terminals**:
 
 ```bash
 source ~/mofa-mini-app/proxystream-secrets.sh
@@ -198,17 +167,26 @@ source ~/mofa-mini-app/ensure_endpoint.sh
 echo $PROXYSTORE_ENDPOINT
 ```
 
-> **Note:** If the endpoint fails to start, modify `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
+> **Note:** If the endpoint fails to initialize, try modifying `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
 
-### 3.7. Execute the Workflow
+### 3.3. Launch Thinker and Server
 
-Same as [2.7](#27-execute-the-workflow):
+**Terminal 1: Launch Thinker**
 
 ```bash
 cd ~/mof-generation-at-scale
-source octopus-secrets.sh
-./example-parallel-run.sh
+source secrets.sh
+LAUCH_OPTION=thinker QUEUE_TYPE=proxystream ./example-parallel-run.sh
 ```
+
+**Terminal 2: Launch Server**
+
+```bash
+cd ~/mof-generation-at-scale
+source secrets.sh
+LAUCH_OPTION=server QUEUE_TYPE=proxystream ./example-parallel-run.sh
+```
+
 ---
 
 ### 4. Troubleshooting MongoDB Errors
