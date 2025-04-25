@@ -11,8 +11,11 @@ services:
        - LAUNCH_OPTION=thinker
        - QUEUE_TYPE=octopus
        - REDIS_HOST=redis-service
-       - PROXYSTORE_ENDPOINT_NAME=ep8765
-       - PROXYSTORE_ENDPOINT_PORT=8765
+       - MONGO_HOST=localhost
+       - PROXYSTORE_ENDPOINT_NAME=ep18765
+       - PROXYSTORE_ENDPOINT_PORT=18765
+    ports:
+      - "27018:27017"
     deploy:
       resources:
         limits:
@@ -31,8 +34,9 @@ services:
        - LAUNCH_OPTION=server
        - QUEUE_TYPE=octopus
        - REDIS_HOST=redis-service
-       - PROXYSTORE_ENDPOINT_NAME=ep8766
-       - PROXYSTORE_ENDPOINT_PORT=8766
+       - MONGO_HOST=thinker
+       - PROXYSTORE_ENDPOINT_NAME=ep18766
+       - PROXYSTORE_ENDPOINT_PORT=18766
     deploy:
       resources:
         limits:
@@ -44,4 +48,4 @@ services:
     image: redis:latest
     container_name: redis-service
     ports:
-      - "6379:6379"
+      - "6380:6379"

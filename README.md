@@ -1,80 +1,93 @@
 # MOFA - Diaspora Mini App
 
-[Codebase](https://github.com/globus-labs/mof-generation-at-scale/tree/octopus2), based on [mof-generation-at-scale/0728896](https://github.com/globus-labs/mof-generation-at-scale/tree/07288963835b5dbea7ccf52f09ecbd4433bf3177)
+## 1. Overview
+
+[MOFA Codebase](https://github.com/globus-labs/mof-generation-at-scale/tree/octopus2), based on [mof-generation-at-scale/0728896](https://github.com/globus-labs/mof-generation-at-scale/tree/07288963835b5dbea7ccf52f09ecbd4433bf3177)
 
 [Octopus Web Console](http://184.73.61.163/ui/clusters/diaspora/all-topics?perPage=25&q=test2)
 
 
-## 1. Usage Guide
+## 2. Docker Usage Guide
 
-1. Create a `secrets.env` file in this directory (along with `Dockerfile`):
+### 2.1. Prerequisites
+
+- Docker and Docker Compose installed
+- `secrets.env` file with required credentials (see below)
+
+### 2.2. Setup `secrets.env`
 ```bash
-export OCTOPUS_AWS_ACCESS_KEY_ID=...
-export OCTOPUS_AWS_SECRET_ACCESS_KEY=...
-export OCTOPUS_BOOTSTRAP_SERVERS=...
-
-export PROXYSTORE_GLOBUS_CLIENT_ID=...
-export PROXYSTORE_GLOBUS_CLIENT_SECRET=...
+OCTOPUS_AWS_ACCESS_KEY_ID=...
+OCTOPUS_AWS_SECRET_ACCESS_KEY=...
+OCTOPUS_BOOTSTRAP_SERVERS=...
+PROXYSTORE_GLOBUS_CLIENT_ID=...
+PROXYSTORE_GLOBUS_CLIENT_SECRET=...
 ```
 
-2. **Reset Kafka Topics**: See Section 1.9 and 2.1 for instructions on resetting Octopus topics before each run.
+### 2.3. Reset Kafka Topics
 
-3. **Run with OctopusQueues**: Make sure `QUEUE_TYPE=octopus` (default) is used in the Docker Compose file:
-   ```bash
-   docker compose build
-   docker compose up
-   ```
+See Section 2.1.10 for instructions on resetting Octopus topics **before each run**.
 
-4. **Run with ProxyQueues**: Update the `docker-compose.yml` by changing both instances of `QUEUE_TYPE=octopus` to `QUEUE_TYPE=proxystream`. Then, run `docker compose up`
+### 2.4. Run with OctopusQueues
 
-5. **Known Issues (To Be Fixed)**
-- When running in split mode (separate thinker and server), each process opens its own local MongoDB instance.
+Make sure `QUEUE_TYPE=octopus` (default) is used in the Docker Compose file, then run
+```bash
+docker compose build
+docker compose up
+```
 
-## 2. Develop Guide (working with the MOFA codebase outside docker)
+### 2.5. Run with ProxyQueues
 
-### 2.1. Setup
+Edit `docker-compose.yml`: set `QUEUE_TYPE=proxystream` for both services, then run `docker compose up`.
 
-**2.1.1. Checkout Correct Git Branch and Install Dependencies**
+## 3. Local Development & Troubleshooting
+
+### 3.1. Prerequisites
+
+**3.1.1. Checkout Correct Git Branch and Install Dependencies**
 
 ```bash
 cd ~/mof-generation-at-scale
 git checkout octopus2
 ```
 
-Install the Kafka client library:
+See MOFA's `README.md` and this repo's `prereq.sh` for detials.
+
+**3.1.2. Install the Kafka client library**
 
 ```bash
 pip install "diaspora-event-sdk[kafka-python]"
 pip install --upgrade "proxystore[all]" confluent-kafka aws-msk-iam-sasl-signer-python
 ```
 
-**2.1.2. Verify LAMMPS with MACE Support**
+**3.1.3. Verify LAMMPS with MACE Support**
 
 ```bash
 LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ./bin/lmp -h | grep mace
 ```
 
-**2.1.3. Prepare Input Files**
+**3.1.4. Prepare Input Files**
 
 ```bash
 cd ~/mof-generation-at-scale/input-files/zn-paddle-pillar
 python assemble_inputs.py
 ```
 
-**2.1.4. Download MACE Model**
+**3.1.5. Download MACE Model**
 
 ```bash
 cd ~/mof-generation-at-scale/input-files/mace
 ./get-macemp-0a.sh
 ```
 
-**2.1.5. Start Redis**
+**3.1.6. Start Redis**
 
 ```bash
 redis-server --daemonize yes
 ```
 
-**2.1.6. Use `LocalConfig` for Local Testing**
+MongoDB will be started by the thinker.
+
+**3.1.7. Update `LocalConfig` for Local Testing**
 
 Edit `~/mof-generation-at-scale/mofa/hpc/config.py`:
 
@@ -86,7 +99,7 @@ class LocalConfig(HPCConfig):
     lammps_cmd = ( 'LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ~/lammps/build-mace/bin/lmp', )
 ```
 
-**2.1.7. Set Octopus and ProxyStream Credentials**
+**3.1.8. Set Octopus and ProxyStream Credentials**
 
 Create `secrets.sh` in `~/mof-generation-at-scale`:
 
@@ -99,7 +112,11 @@ export PROXYSTORE_GLOBUS_CLIENT_ID=...
 export PROXYSTORE_GLOBUS_CLIENT_SECRET=...
 ```
 
-**2.1.8. Configure Workflow Script**
+**3.1.9. Copy `ensure_endpoint.sh` to `~/mof-generation-at-scale`**
+
+Also make the shell script executable: `chmod +x ~/mof-generation-at-scale/ensure_endpoint.sh`
+
+**3.1.10. Configure Workflow Script**
 
 Edit `example-parallel-run.sh` in `~/mof-generation-at-scale`:
 
@@ -109,12 +126,21 @@ Edit `example-parallel-run.sh` in `~/mof-generation-at-scale`:
 : "${LAUNCH_OPTION:=both}"
 : "${QUEUE_TYPE:=redis}"
 : "${REDIS_HOST:=127.0.0.1}"
+: "${MONGO_HOST:=localhost}"
 : "${PROXYSTORE_ENDPOINT_NAME:=ep8765}"
 : "${PROXYSTORE_ENDPOINT_PORT:=8765}"
 
-source ensure_endpoint.sh $PROXYSTORE_ENDPOINT_NAME $PROXYSTORE_ENDPOINT_PORT
+echo "LAUNCH_OPTION:             $LAUNCH_OPTION"
+echo "QUEUE_TYPE:                $QUEUE_TYPE"
+echo "REDIS_HOST:                $REDIS_HOST"
+echo "MONGO_HOST:                $MONGO_HOST"
+echo "PROXYSTORE_ENDPOINT_NAME:  $PROXYSTORE_ENDPOINT_NAME"
+echo "PROXYSTORE_ENDPOINT_PORT:  $PROXYSTORE_ENDPOINT_PORT"
 
-echo $PROXYSTORE_ENDPOINT
+if [[ "$QUEUE_TYPE" == "proxystream" ]]; then
+    source ensure_endpoint.sh $PROXYSTORE_ENDPOINT_NAME $PROXYSTORE_ENDPOINT_PORT
+    echo "PROXYSTORE_ENDPOINT:       $PROXYSTORE_ENDPOINT"
+fi
 
 python run_parallel_workflow.py \
       --node-path input-files/zn-paddle-pillar/node.json \
@@ -132,11 +158,26 @@ python run_parallel_workflow.py \
       --md-timesteps 1000 \
       --dft-opt-steps 2 \
       --launch-option $LAUNCH_OPTION \
-      --queue-type $QUEUE_TYPE
+      --queue-type $QUEUE_TYPE \
+      --mongo-host $MONGO_HOST
 
 ```
 
-**2.1.9. Reset `mofa_test2` Kafka Topics**
+### 3.2. Run WOFA Workflow
+
+#### 3.2.1. Run MOFA Workflow with `RedisQueues`
+
+Test Launch Thinker and Server
+
+```bash
+cd ~/mof-generation-at-scale
+source secrets.sh
+./example-parallel-run.sh
+# OR
+LAUNCH_OPTION=both QUEUE_TYPE=redis ./example-parallel-run.sh
+```
+
+#### 3.2.2. Reset `mofa_test2` Kafka Topics
 
 In a separate virtual environemnt from `mofa` (due to dependency conflicts), install:
 ```bash
@@ -152,36 +193,25 @@ export TOPIC_PASSWORD="your_password"
 export TOPIC_BASE_URL="http://kafbat-url"
 ```
 
-**2.1.10. Test Run MOFA Workflow with `RedisQueues`**
-
-Test Launch Thinker and Server
-
-```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-LAUNCH_OPTION=both QUEUE_TYPE=redis ./example-parallel-run.sh
-```
-
-Use two separate terminals to run the workflow.
-> **Note:** If the endpoint fails to initialize, try modifying `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
-
----
-
-## 2.2. Run MOFA Workflow with `OctopusQueues`
-
-### 2.2.1. Reset Kafka Topics
-
-Use Playwright to clear existing Kafka topics:
+Use Playwright to reset existing Kafka topics:
 
 ```bash
 source ~/mofa-mini-app/playwright-secrets.sh
 python ~/mofa-mini-app/playwright-reset-topic-headless.py
 ```
 
-### 2.2.2. Launch Thinker and Server
 
-Use two separate terminals to run the workflow.
-> **Note:** If the endpoint fails to initialize, try modifying `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
+#### 3.2.3. Run MOFA Workflow with `OctopusQueues`
+
+**3.2.3.1. Run both thinker and server**
+
+```bash
+cd ~/mof-generation-at-scale
+source secrets.sh
+LAUNCH_OPTION=thinker QUEUE_TYPE=octopus ./example-parallel-run.sh
+```
+
+**3.2.3.2. Run thinker and server separately**
 
 **Terminal 1: Launch Thinker**
 
@@ -199,22 +229,17 @@ source secrets.sh
 LAUNCH_OPTION=server QUEUE_TYPE=octopus ./example-parallel-run.sh
 ```
 
----
+#### 3.2.4. Run MOFA Workflow with `ProxyQueues`
 
-## 2.3. Run MOFA Workflow with `ProxyQueues`
-
-### 2.3.1. Reset Kafka Topics
-
-Reset topics again before switching to `ProxyQueues`:
+**3.2.4.1. Run both thinker and server**
 
 ```bash
-source ~/mofa-mini-app/playwright-secrets.sh
-python ~/mofa-mini-app/playwright-reset-topic-headless.py
+cd ~/mof-generation-at-scale
+source secrets.sh
+LAUNCH_OPTION=thinker QUEUE_TYPE=proxystream ./example-parallel-run.sh
 ```
 
-### 2.3.2. Launch Thinker and Server
-
-> **Note:** If the endpoint fails to initialize, try modifying `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
+**3.2.4.2. Run thinker and server separately**
 
 **Terminal 1: Launch Thinker**
 
@@ -236,39 +261,34 @@ LAUNCH_OPTION=server QUEUE_TYPE=proxystream ./example-parallel-run.sh
 LAUNCH_OPTION=server QUEUE_TYPE=proxystream PROXYSTORE_ENDPOINT_NAME=ep8767 PROXYSTORE_ENDPOINT_PORT=8767 ./example-parallel-run.sh
 ```
 
----
+> **Note:** If the endpoint fails to initialize, try modifying `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
 
 ## 4. Troubleshooting Errors
 
-If you see MongoDB errors during execution:
-```bash
-sudo systemctl stop mongod
-sudo rm -rf /var/lib/mongodb/*
-sudo systemctl start mongod
-sudo systemctl status mongod
-```
+### 4.1. Develop Modes and Parameters Summary
 
-### 4.1 Troubleshooting Docker errors
+| Mode                | QUEUE_TYPE      | LAUNCH_OPTION                | Required Parameters                        | Notes                                 |
+|---------------------|-----------------|------------------------------|--------------------------------------------|---------------------------------------|
+| RedisQueues         | redis           | both                         | REDIS_HOST, MONGO_HOST                     | Only `both` supported                 |
+| OctopusQueues       | octopus         | both / thinker / server      | REDIS_HOST, MONGO_HOST                     | Split or combined mode                |
+| ProxyQueues         | proxystream     | both / thinker / server      | PROXYSTORE_ENDPOINT_NAME, PROXYSTORE_ENDPOINT_PORT, MONGO_HOST | REDIS_HOST not used                   |
+
+
+### 4.2. Troubleshooting Docker errors
 ```bash
 docker compose build
 docker compose up 
 # OR
 docker compose up -d
-docker exec -it mofa bash
-echo $LAUNCH_OPTION
-echo $QUEUE_TYPE
+docker exec -it thinker bash
+echo $LAUNCH_OPTION  $QUEUE_TYPE
 docker compose down
-# scratch
-docker compose up -d
+# OR
 docker build -t octopus2 -f Dockerfile .
 docker run --env-file=secrets.env -it octopus2
-# scratch
-echo $OCTOPUS_BOOTSTRAP_SERVERS
-cat /var/log/mofa-install.log
-
 ```
 
-### 4.2. Docker Image Structure
+### 4.3. Docker Image Structure
 
 ```bash
 ├── root/
@@ -277,7 +297,7 @@ cat /var/log/mofa-install.log
 │   │   ├── ensure_endpoint.sh               # Script to ensure ProxyStore endpoint
 │   │   └── mofa/
 │   │       └── hpc/
-│   │           └── config.py                # Config file modified for local CPU LAMMPS
-│   ├── libtorch/                            # Extracted PyTorch C++ distribution
-│   └── lammps/                              # LAMMPS source and build directory
+│   │           └── config.py                
+│   ├── libtorch/                            
+│   └── lammps/                              
 ```

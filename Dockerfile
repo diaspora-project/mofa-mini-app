@@ -14,5 +14,8 @@ RUN chmod +x /root/mof-generation-at-scale/example-parallel-run.sh
 COPY ensure_endpoint.sh /root/mof-generation-at-scale/ensure_endpoint.sh
 RUN chmod +x /root/mof-generation-at-scale/ensure_endpoint.sh
 
+# used for local development
+# COPY run_parallel_workflow.py /root/mof-generation-at-scale/run_parallel_workflow.py
+
 WORKDIR /root/mof-generation-at-scale
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "./example-parallel-run.sh"]
