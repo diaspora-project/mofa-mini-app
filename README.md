@@ -210,12 +210,14 @@ sudo systemctl status mongod
 
 ### 5.1
 ```bash
+docker compose build
+docker compose up 
+# OR
 docker compose up -d
 docker exec -it octopus2 bash
 echo $LAUNCH_OPTION
 echo $QUEUE_TYPE
- cd ~/mof-generation-at-scale/
-conda run -n mofa ./example-parallel-run.sh 
+docker compose down
 ```
 
 

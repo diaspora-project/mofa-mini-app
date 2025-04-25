@@ -10,14 +10,13 @@ services:
     environment:
        - LAUNCH_OPTION=both
        - QUEUE_TYPE=octopus
+       - REDIS_HOST=redis-service
     deploy:
       resources:
         limits:
           memory: 24g
     depends_on:
       - redis-service
-    stdin_open: true
-    tty: true
 
   redis-service:
     image: redis:latest

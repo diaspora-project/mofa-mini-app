@@ -15,4 +15,5 @@ ENV PATH="/opt/conda/bin:$PATH"
 COPY ensure_endpoint.sh /root/ensure_endpoint.sh
 RUN chmod +x /root/ensure_endpoint.sh
 
-ENTRYPOINT ["bash", "-c", "conda run -n mofa --no-capture-output bash"]
+WORKDIR /root/mof-generation-at-scale
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "./example-parallel-run.sh"]
