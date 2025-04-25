@@ -21,7 +21,7 @@ cd /root # this is needed because the initial directory is the root directory (/
 git clone https://github.com/globus-labs/mof-generation-at-scale.git
 cd mof-generation-at-scale/
 git checkout octopus2
-mv /root/example-parallel-run.sh /root/mof-generation-at-scale/
+# mv /root/example-parallel-run.sh /root/mof-generation-at-scale/
 
 # Setup conda environment
 conda update -n base -y conda
@@ -77,8 +77,8 @@ cd /root/mof-generation-at-scale/input-files/mace
 $MOFA_RUN ./get-macemp-0a.sh
 ls -l /root/mof-generation-at-scale/input-files/mace >> /var/log/mofa-install.log
 
-# Launch Redis server
-$MOFA_RUN redis-server --daemonize yes >> /var/log/mofa-install.log 2>&1
+# Launch Redis server -- now through docker-compose
+# $MOFA_RUN redis-server --daemonize yes >> /var/log/mofa-install.log 2>&1
 
 # change  ~/mof-generation-at-scale/mofa/hpc/config.py
 tmp_file=$(mktemp)
@@ -90,19 +90,6 @@ EOF
 
 sed -i '94,96d' ~/mof-generation-at-scale/mofa/hpc/config.py
 sed -i "93r $tmp_file" ~/mof-generation-at-scale/mofa/hpc/config.py
-
-rm "$tmp_file"
-
-# change   ~/mof-generation-at-scale/run_parallel_workflow.py
-tmp_file=$(mktemp)
-cat <<'EOF' > "$tmp_file"
-    queues = OctopusQueues(
-        topics=['generation', 'lammps', 'cp2k', 'training', 'assembly'],
-    )
-EOF
-
-sed -i '111,113d' ~/mof-generation-at-scale/run_parallel_workflow.py
-sed -i "110r $tmp_file" ~/mof-generation-at-scale/run_parallel_workflow.py
 
 rm "$tmp_file"
 

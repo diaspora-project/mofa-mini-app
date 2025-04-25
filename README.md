@@ -89,7 +89,7 @@ python run_parallel_workflow.py \
   --mace-model-path ./input-files/mace/mace-mp0_medium-lammps.pt \
   --md-timesteps 1000 \
   --dft-opt-steps 2 \
-  --launch-option $LAUCH_OPTION \
+  --launch-option $LAUNCH_OPTION \
   --queue-type $QUEUE_TYPE
 ```
 
@@ -107,6 +107,15 @@ Create `playwright-secrets.sh` in `~/mofa-mini-app`:
 export TOPIC_USERNAME="your_username"
 export TOPIC_PASSWORD="your_password"
 export TOPIC_BASE_URL="http://kafbat-url"
+```
+
+**1.10. Test Run MOFA Workflow with `RedisQueues`**
+
+Test Launch Thinker and Server
+
+```bash
+cd ~/mof-generation-at-scale
+LAUNCH_OPTION=both QUEUE_TYPE=redis ./example-parallel-run.sh
 ```
 
 ---
@@ -131,7 +140,7 @@ Use two separate terminals to run the workflow.
 ```bash
 cd ~/mof-generation-at-scale
 source secrets.sh
-LAUCH_OPTION=thinker QUEUE_TYPE=octopus ./example-parallel-run.sh
+LAUNCH_OPTION=thinker QUEUE_TYPE=octopus ./example-parallel-run.sh
 ```
 
 **Terminal 2: Launch Server**
@@ -139,7 +148,7 @@ LAUCH_OPTION=thinker QUEUE_TYPE=octopus ./example-parallel-run.sh
 ```bash
 cd ~/mof-generation-at-scale
 source secrets.sh
-LAUCH_OPTION=server QUEUE_TYPE=octopus ./example-parallel-run.sh
+LAUNCH_OPTION=server QUEUE_TYPE=octopus ./example-parallel-run.sh
 ```
 
 > Ensure both terminals use the same environment and configuration settings.
@@ -176,7 +185,7 @@ echo $PROXYSTORE_ENDPOINT
 ```bash
 cd ~/mof-generation-at-scale
 source secrets.sh
-LAUCH_OPTION=thinker QUEUE_TYPE=proxystream ./example-parallel-run.sh
+LAUNCH_OPTION=thinker QUEUE_TYPE=proxystream ./example-parallel-run.sh
 ```
 
 **Terminal 2: Launch Server**
@@ -184,7 +193,7 @@ LAUCH_OPTION=thinker QUEUE_TYPE=proxystream ./example-parallel-run.sh
 ```bash
 cd ~/mof-generation-at-scale
 source secrets.sh
-LAUCH_OPTION=server QUEUE_TYPE=proxystream ./example-parallel-run.sh
+LAUNCH_OPTION=server QUEUE_TYPE=proxystream ./example-parallel-run.sh
 ```
 
 ---
@@ -199,11 +208,23 @@ sudo systemctl start mongod
 sudo systemctl status mongod
 ```
 
+### 5.1
+```bash
+docker compose up -d
+docker exec -it octopus2 bash
+echo $LAUNCH_OPTION
+echo $QUEUE_TYPE
+ cd ~/mof-generation-at-scale/
+conda run -n mofa ./example-parallel-run.sh 
+```
 
-### 5.1. Docker Build and Run
+
+### 5.3. Debug Docker Build and Run
 
 Build the container and run it with secrets injected from an `.env` file:
 ```bash
+
+docker compose up -d
 docker build -t octopus2 -f Dockerfile-octopus2 .
 docker run --env-file=secrets.env -it octopus2
 ```
@@ -221,21 +242,6 @@ cd ~/mof-generation-at-scale
 ```
 
 ### 5.2. Switch to `ProxyQueues` Mode
-
-To switch the workflow to use `ProxyQueues` instead of `OctopusQueues`, run the code below to update the relevant lines in `run_parallel_workflow.py`:
-```bash
-tmp_file=$(mktemp)
-cat <<'EOF' > "$tmp_file"
-    queues = ProxyQueues(
-        topics=['generation', 'lammps', 'cp2k', 'training', 'assembly'],
-    )
-EOF
-
-sed -i '111,113d' ~/mof-generation-at-scale/run_parallel_workflow.py
-sed -i "110r $tmp_file" ~/mof-generation-at-scale/run_parallel_workflow.py
-
-rm "$tmp_file"
-```
 
 Set up the ProxyStore endpoint:
 ```bash
