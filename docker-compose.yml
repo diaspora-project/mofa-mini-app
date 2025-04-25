@@ -1,16 +1,38 @@
 services:
 
-  mofa:
+  thinker:
     build:
       context: .
-      dockerfile: Dockerfile-octopus2
-    container_name: octopus2
+      dockerfile: Dockerfile
+    container_name: thinker
     env_file:
       - secrets.env
     environment:
-       - LAUNCH_OPTION=both
+       - LAUNCH_OPTION=thinker
        - QUEUE_TYPE=octopus
        - REDIS_HOST=redis-service
+       - PROXYSTORE_ENDPOINT_NAME=ep8765
+       - PROXYSTORE_ENDPOINT_PORT=8765
+    deploy:
+      resources:
+        limits:
+          memory: 24g
+    depends_on:
+      - redis-service
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: server
+    env_file:
+      - secrets.env
+    environment:
+       - LAUNCH_OPTION=server
+       - QUEUE_TYPE=octopus
+       - REDIS_HOST=redis-service
+       - PROXYSTORE_ENDPOINT_NAME=ep8766
+       - PROXYSTORE_ENDPOINT_PORT=8766
     deploy:
       resources:
         limits:

@@ -1,7 +1,8 @@
-# ensure_endpoint NAME [PORT]
+#! /bin/bash
+
 # Ensures a ProxyStore endpoint with the given name exists and is running.
 ensure_endpoint() {
-    endpoint_name=$1
+    endpoint_name=${1:-ep8765}
     endpoint_port=${2:-8765}  # Default port is 8765 if not provided
 
     # Check if the endpoint already exists
@@ -49,5 +50,4 @@ ensure_endpoint() {
     cat "$log_file"
 }
 
-# Call the function with name and optionally port
-ensure_endpoint my-endpoint "$PROXYSTORE_ENDPOINT_PORT"
+ensure_endpoint $1 $2 # name port

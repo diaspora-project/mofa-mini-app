@@ -2,18 +2,17 @@
 
 FROM ghcr.io/mochi-hpc/mochi-spack-buildcache:mofka-0.6.4-6jvujfbrsndd4aqsxc5ag4uicyjnkkxp.spack
 
+COPY prereq.sh /root/prereq.sh
+RUN chmod +x /root/prereq.sh
+RUN bash /root/prereq.sh
 
-COPY octopus2-indocker.sh /root/octopus2-indocker.sh
-RUN chmod +x /root/octopus2-indocker.sh
-RUN bash /root/octopus2-indocker.sh
+ENV PATH="/opt/conda/bin:$PATH"
 
 COPY example-parallel-run.sh /root/mof-generation-at-scale/example-parallel-run.sh
 RUN chmod +x /root/mof-generation-at-scale/example-parallel-run.sh
 
-ENV PATH="/opt/conda/bin:$PATH"
-
-COPY ensure_endpoint.sh /root/ensure_endpoint.sh
-RUN chmod +x /root/ensure_endpoint.sh
+COPY ensure_endpoint.sh /root/mof-generation-at-scale/ensure_endpoint.sh
+RUN chmod +x /root/mof-generation-at-scale/ensure_endpoint.sh
 
 WORKDIR /root/mof-generation-at-scale
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "mofa", "./example-parallel-run.sh"]
