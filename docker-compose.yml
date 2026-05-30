@@ -1,51 +1,145 @@
+# MOFA Diaspora mini-app — thinker/server split, one profile per backend.
+#
+# Two modes, selected with a compose profile; each runs a "thinker" + "server"
+# pair against a DiasporaQueues backend:
+#
+#   docker compose --profile octopus up --build   # AWS MSK Kafka (cloud)
+#   docker compose --profile mofka   up --build   # local mochi bedrock daemon
+#   docker compose --profile files   up --build   # single container, no deps (smoke)
+#
+# Stop:  docker compose --profile <name> down
+#
+# Roles share one DiasporaQueues topic prefix (MOFA_QUEUE_PREFIX) so the
+# thinker (steering + MongoDB) and the server (Parsl task executor) meet on the
+# same topics. See scripts/start.sh; run_parallel_workflow.py implements the
+# split via --launch-option / --mongo-host / --queue-prefix.
+#
+#   octopus : thinker + server are independent containers that rendezvous on
+#             cloud Kafka; the server reaches the thinker's mongod by name.
+#             Both mint AWS keys from cached Globus tokens in `diaspora-storage`
+#             (one-time bootstrap below).
+#   mofka   : the thinker runs a loopback ofi+tcp bedrock daemon (Parsl-fork-
+#             safe, per mof-generation-at-scale/docs/adr/0001); the server
+#             shares the thinker's network namespace so that the loopback
+#             bedrock and mongod are reachable. The flock file is handed over a
+#             shared volume.
+#
+# One-time Octopus Globus login (writes ~/.diaspora/storage.db into the volume):
+#   docker compose --profile octopus run --rm octopus-thinker python tests/smoke_octopus.py
+#
+# Benchmarking is ON by default: DiasporaQueues writes one JSON record per timed
+# queue op. Each profile bind-mounts ./bench-out/<profile> over the workflow's
+# run/ dir, so every container's per-PID trace lands on the host at
+# ./bench-out/<profile>/parallel-*/benchmark/ (survives `down`). Summarize with
+# mof-generation-at-scale's bin/analyze-bench.py. For a >30-min benchmark run set
+# a large budget + shared prefix:
+#   MOFA_SIM_BUDGET=100000 MOFA_QUEUE_PREFIX=mofa_bench \
+#     docker compose --profile mofka up -d     # wait >30 min, then `down`
+#   ~/mof-generation-at-scale/bin/analyze-bench.py ./bench-out/mofka
+
+x-mofa: &mofa
+  build:
+    context: .
+    dockerfile: docker/Dockerfile-cpu
+    args:
+      MOFA_SOURCE: ${MOFA_SOURCE:-remote}
+      MOFA_BRANCH: ${MOFA_BRANCH:-diaspora-debug}
+  image: mofa-mini-app:cpu
+  command: bash /opt/scripts/start.sh
+  deploy:
+    resources:
+      limits:
+        memory: 24g
+
 services:
 
-  thinker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: thinker
+  # ---- octopus mode: thinker + server, independent containers (cloud Kafka) --
+  octopus-thinker:
+    <<: *mofa
+    container_name: octopus-thinker
+    profiles: [octopus]
     env_file:
-      - secrets.env
+      - path: .env
+        required: false
     environment:
-       - LAUNCH_OPTION=thinker
-       - QUEUE_TYPE=octopus
-       - REDIS_HOST=redis-service
-       - MONGO_HOST=localhost
-       - PROXYSTORE_ENDPOINT_NAME=ep18765
-       - PROXYSTORE_ENDPOINT_PORT=18765
-    ports:
-      - "27018:27017"
-    deploy:
-      resources:
-        limits:
-          memory: 24g
-    depends_on:
-      - redis-service
+      - STREAM_ENGINE=octopus
+      - LAUNCH_OPTION=thinker
+      - MONGO_HOST=localhost
+      - MOFA_QUEUE_PREFIX=${MOFA_QUEUE_PREFIX:-mofa_octopus}
+      - MOFA_SIM_BUDGET=${MOFA_SIM_BUDGET:-4}
+    volumes:
+      # Cached Globus tokens; persists the one-time interactive login.
+      - diaspora-storage:/root/.diaspora
+      # Benchmark traces (+ run logs) land on the host here.
+      - ./bench-out/octopus:/opt/mof-generation-at-scale/run
 
-  server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: server
+  octopus-server:
+    <<: *mofa
+    container_name: octopus-server
+    profiles: [octopus]
     env_file:
-      - secrets.env
+      - path: .env
+        required: false
     environment:
-       - LAUNCH_OPTION=server
-       - QUEUE_TYPE=octopus
-       - REDIS_HOST=redis-service
-       - MONGO_HOST=thinker
-       - PROXYSTORE_ENDPOINT_NAME=ep18766
-       - PROXYSTORE_ENDPOINT_PORT=18766
-    deploy:
-      resources:
-        limits:
-          memory: 24g
+      - STREAM_ENGINE=octopus
+      - LAUNCH_OPTION=server
+      - MONGO_HOST=octopus-thinker   # reach the thinker's mongod by service name
+      - MOFA_QUEUE_PREFIX=${MOFA_QUEUE_PREFIX:-mofa_octopus}
+      - MOFA_SIM_BUDGET=${MOFA_SIM_BUDGET:-4}
+    volumes:
+      - diaspora-storage:/root/.diaspora
+      - ./bench-out/octopus:/opt/mof-generation-at-scale/run
     depends_on:
-      - redis-service
+      - octopus-thinker
 
-  redis-service:
-    image: redis:latest
-    container_name: redis-service
-    ports:
-      - "6380:6379"
+  # ---- mofka mode: thinker (bedrock+mongo) + server (shared netns) -----------
+  mofka-thinker:
+    <<: *mofa
+    container_name: mofka-thinker
+    profiles: [mofka]
+    environment:
+      - STREAM_ENGINE=mofka
+      - LAUNCH_OPTION=thinker
+      - MONGO_HOST=localhost
+      - MOFA_QUEUE_PREFIX=${MOFA_QUEUE_PREFIX:-mofa_mofka}
+      - MOFA_SIM_BUDGET=${MOFA_SIM_BUDGET:-4}
+      - MOFA_MOFKA_GROUP_FILE=/shared/mofka/mofka.flock.json
+    volumes:
+      - mofka-shared:/shared/mofka
+      - ./bench-out/mofka:/opt/mof-generation-at-scale/run
+
+  mofka-server:
+    <<: *mofa
+    container_name: mofka-server
+    profiles: [mofka]
+    # Share the thinker's network namespace: the bedrock daemon binds loopback
+    # ofi+tcp, so the server reaches bedrock/mongod at 127.0.0.1.
+    network_mode: "service:mofka-thinker"
+    environment:
+      - STREAM_ENGINE=mofka
+      - LAUNCH_OPTION=server
+      - MONGO_HOST=127.0.0.1
+      - MOFA_QUEUE_PREFIX=${MOFA_QUEUE_PREFIX:-mofa_mofka}
+      - MOFA_SIM_BUDGET=${MOFA_SIM_BUDGET:-4}
+      - MOFA_MOFKA_GROUP_FILE=/shared/mofka/mofka.flock.json
+    volumes:
+      - mofka-shared:/shared/mofka
+      - ./bench-out/mofka:/opt/mof-generation-at-scale/run
+    depends_on:
+      - mofka-thinker
+
+  # ---- files mode: single container, no external deps (quick smoke) ----------
+  workflow-files:
+    <<: *mofa
+    container_name: workflow-files
+    profiles: [files]
+    environment:
+      - STREAM_ENGINE=files
+      - LAUNCH_OPTION=both
+      - MONGO_HOST=localhost
+    volumes:
+      - ./bench-out/files:/opt/mof-generation-at-scale/run
+
+volumes:
+  diaspora-storage:
+  mofka-shared:

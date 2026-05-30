@@ -1,0 +1,37 @@
+# CPU-only superset of mof-generation-at-scale/envs/environment-chameleon-stream.yml.
+# - mongodb and openbabel intentionally OMITTED (openssl/icu conflict with
+#   mochi-margo per envs/chameleon-stream.md). mongod is installed via apt
+#   in the Dockerfile; openbabel-wheel arrives via pip in mofa[test].
+# - cuequivariance extras ([cueq]) omitted — GPU only.
+#
+# The file:// channel URL is rewritten by docker/Dockerfile-cpu to point at
+# the in-image mochi-conda-packages stage. Conda does not expand env vars
+# inside channel URLs, so the host path here only matters if you create the
+# env outside docker.
+name: mofa
+channels:
+  - file:///opt/mochi-conda-packages
+  - conda-forge
+  - defaults
+dependencies:
+  - python==3.12.*
+  - openssl>3
+
+  # Mochi-HPC (diaspora stream backends).
+  - mofka
+  - diaspora-stream-api
+  - diaspora-stream-octopus
+
+  # Crystalline / molecular tooling.
+  - conda-forge::chargemol
+  - conda-forge::raspa2
+  # NB: cp2k is intentionally NOT here. conda-forge cp2k pulls a conda libtorch
+  # whose headers collide with the standalone /opt/libtorch the LAMMPS+MACE
+  # build compiles against. docker/Dockerfile-cpu installs cp2k in its own
+  # layer AFTER the LAMMPS build to avoid that clash.
+
+  - pip
+  - pip:
+      - torch==2.7.*
+      - diaspora-event-sdk
+      - tqdm

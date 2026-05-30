@@ -1,303 +1,226 @@
-# MOFA - Diaspora Mini App
+# MOFA Diaspora Mini-App (CPU)
 
-## 1. Overview
+CPU-only Docker mini-app for the MOFA parallel workflow, run as a
+**thinker + server** split over
+[`mofa.diaspora.DiasporaQueues`](https://github.com/globus-labs/mof-generation-at-scale/blob/diaspora-debug/mofa/diaspora.py),
+against two stream backends:
 
-[MOFA Codebase](https://github.com/globus-labs/mof-generation-at-scale/tree/octopus2), based on [mof-generation-at-scale/0728896](https://github.com/globus-labs/mof-generation-at-scale/tree/07288963835b5dbea7ccf52f09ecbd4433bf3177)
+- **`octopus`** — AWS MSK Kafka via the Diaspora event SDK + Globus auth.
+- **`mofka`** — local single-host bedrock daemon (mochi-margo, `ofi+tcp`).
 
-[Octopus Web Console](http://184.73.61.163/ui/clusters/diaspora/all-topics?perPage=25&q=test2)
+Tracks the cloud-VM setup documented in
+[`mof-generation-at-scale/envs/chameleon-stream.md`](https://github.com/globus-labs/mof-generation-at-scale/blob/diaspora-debug/envs/chameleon-stream.md).
 
+## Architecture
 
-## 2. Docker Usage Guide
+`run_parallel_workflow.py` splits into two roles via
+`--launch-option {both,thinker,server}` (plus `--mongo-host` and
+`--queue-prefix`); `scripts/start.sh` sets those flags per role. With
+`--launch-option both` (the default) one process runs the whole workflow.
+The two split roles:
 
-### 2.1. Prerequisites
+| Role | Runs | Talks to |
+|---|---|---|
+| **thinker** | MongoDB + `MOFAThinker` (steering: submits/gathers tasks) | the queue + its own mongod |
+| **server** | `ParslTaskServer` (executes generation / LAMMPS / CP2K / RASPA / assembly) | the queue + the thinker's mongod |
 
-- Docker and Docker Compose installed
-- `secrets.env` file with required credentials (see below)
+The two halves rendezvous on the queue **only if they share a topic prefix**;
+upstream mints a *random* prefix per process, so the mini-app pins
+`MOFA_QUEUE_PREFIX` identically on both halves.
 
-### 2.2. Setup `secrets.env`
-```bash
-OCTOPUS_AWS_ACCESS_KEY_ID=...
-OCTOPUS_AWS_SECRET_ACCESS_KEY=...
-OCTOPUS_BOOTSTRAP_SERVERS=...
-PROXYSTORE_GLOBUS_CLIENT_ID=...
-PROXYSTORE_GLOBUS_CLIENT_SECRET=...
+```
+mofa-mini-app/
+├── docker/Dockerfile-cpu       # one CPU image for every role/backend
+├── envs/environment-cpu.yml    # CPU superset of environment-chameleon-stream.yml
+├── scripts/
+│   ├── start.sh                # entrypoint; role- & backend-aware
+│   └── lmp-mace.sh             # LAMMPS launcher scoping libtorch for pair_style mace
+├── docker-compose.yml          # profiles: octopus, mofka, files
+├── .env.template               # copy to .env (gitignored); optional for octopus
+└── README.md
 ```
 
-### 2.3. Reset Kafka Topics
+### Topology per backend
 
-See Section 2.1.10 for instructions on resetting Octopus topics **before each run**.
+- **octopus** (`--profile octopus`) — `octopus-thinker` and `octopus-server`,
+  independent containers that rendezvous on cloud Kafka; the server reaches the
+  thinker's mongod by service name. Both mint AWS keys from cached Globus tokens
+  (the `diaspora-storage` volume).
+- **mofka** (`--profile mofka`) — `mofka-thinker` runs a **loopback `ofi+tcp`
+  bedrock daemon** (`bin/start-bedrock.py`; Parsl-fork-safe — `na+sm` hangs
+  forked workers and is blocked by Yama across containers, see
+  [ADR-0001](https://github.com/globus-labs/mof-generation-at-scale/blob/diaspora-debug/docs/adr/0001-mofka-bedrock-transport.md)).
+  `mofka-server` **shares the thinker's network namespace**
+  (`network_mode: service:mofka-thinker`) so it reaches the loopback bedrock
+  and mongod. The flock file is handed over the `mofka-shared` volume.
+- **files** (`--profile files`) — a single `workflow-files` container,
+  `LAUNCH_OPTION=both`, on-disk topics, no external service. Quickest smoke.
 
-### 2.4. Run with OctopusQueues
+## Prerequisites
 
-Make sure `QUEUE_TYPE=octopus` (default) is used in the Docker Compose file, then run
-```bash
-docker compose build
-docker compose up
-```
+- Docker + Docker Compose v2
+- (octopus only) a Globus account with Diaspora/Octopus access, for the
+  one-time token bootstrap
 
-### 2.5. Run with ProxyQueues
+> If your user isn't in the `docker` group, prefix every `docker` / `docker
+> compose` command below with `sudo` (the commands are written without it).
 
-Edit `docker-compose.yml`: set `QUEUE_TYPE=proxystream` for both services, then run `docker compose up`.
-
-## 3. Local Development & Troubleshooting
-
-### 3.1. Prerequisites
-
-**3.1.1. Checkout Correct Git Branch and Install Dependencies**
-
-```bash
-cd ~/mof-generation-at-scale
-git checkout octopus2
-```
-
-See MOFA's `README.md` and this repo's `prereq.sh` for detials.
-
-**3.1.2. Install the Kafka client library**
-
-```bash
-pip install "diaspora-event-sdk[kafka-python]"
-pip install --upgrade "proxystore[all]" confluent-kafka aws-msk-iam-sasl-signer-python
-```
-
-**3.1.3. Verify LAMMPS with MACE Support**
-
-```bash
-LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ./bin/lmp -h | grep mace
-```
-
-**3.1.4. Prepare Input Files**
-
-```bash
-cd ~/mof-generation-at-scale/input-files/zn-paddle-pillar
-python assemble_inputs.py
-```
-
-**3.1.5. Download MACE Model**
+## Build
 
 ```bash
-cd ~/mof-generation-at-scale/input-files/mace
-./get-macemp-0a.sh
+docker compose --profile files build      # builds the shared mofa-mini-app:cpu image
 ```
 
-**3.1.6. Start Redis**
+The build pulls `ubuntu:24.04`, installs Miniconda (accepting the Anaconda ToS
+non-interactively), downloads the pinned mochi-hpc conda channel
+(`MOCHI_TAG=2026-05-30`), creates the `mofa` conda env, downloads libtorch
+(CPU 2.5.1), compiles LAMMPS with MACE support (`PKG_ML-MACE` → pair_style mace,
+libtorch model format), installs conda-forge `cp2k` plus the `cp2k_shell.ssmp`
+wrapper (DFT), and clones the MOFA source.
+Cold build ~20–30 min (LAMMPS + cp2k dominate); image ~9–13 GB. The build's
+last step runs
+[`tests/smoke_stream_env.py`](https://github.com/globus-labs/mof-generation-at-scale/blob/diaspora-debug/tests/smoke_stream_env.py)
+and fails if any of the stream imports is missing.
+
+### Build-arg knobs
+
+| Arg | Default | Purpose |
+|---|---|---|
+| `MOFA_SOURCE` | `remote` | `remote` clones MOFA at build; `local` skips the clone and expects a bind-mount at runtime. |
+| `MOFA_BRANCH` | `diaspora-debug` | Branch to check out when `MOFA_SOURCE=remote`. |
+| `MOFA_REMOTE` | `https://github.com/globus-labs/mof-generation-at-scale.git` | Git remote to clone. |
+| `MOCHI_TAG` | `2026-05-30` | mochi-conda-packages release (mofka 0.9.0 / yokan 0.9.2 / bedrock 0.16.1). Keep in lockstep with mof-generation's `environment-chameleon-stream.yml`; a tag where yokan and `diaspora-stream-octopus` disagree on the libuuid/util-linux pin breaks the solve (see `chameleon-stream.md` Troubleshooting). |
+
+## Run
 
 ```bash
-redis-server --daemonize yes
+docker compose --profile mofka   up --build   # local bedrock daemon
+docker compose --profile octopus up --build   # AWS MSK Kafka (needs token bootstrap)
+docker compose --profile files   up --build   # single-container smoke, no deps
 ```
 
-MongoDB will be started by the thinker.
-
-**3.1.7. Update `LocalConfig` for Local Testing**
-
-Edit `~/mof-generation-at-scale/mofa/hpc/config.py`:
-
-```python
-class LocalConfig(HPCConfig):
-    """Single-worker config for testing."""
-    torch_device = 'cpu'
-    lammps_env = {}
-    lammps_cmd = ( 'LD_LIBRARY_PATH=~/libtorch/lib:$LD_LIBRARY_PATH ~/lammps/build-mace/bin/lmp', )
-```
-
-**3.1.8. Set Octopus and ProxyStream Credentials**
-
-Create `secrets.sh` in `~/mof-generation-at-scale`:
+Each role runs
+[`run_parallel_workflow.py`](https://github.com/globus-labs/mof-generation-at-scale/blob/diaspora-debug/run_parallel_workflow.py)
+with a small `--simulation-budget` (4). Stop within ~15 min:
 
 ```bash
-export OCTOPUS_AWS_ACCESS_KEY_ID=...
-export OCTOPUS_AWS_SECRET_ACCESS_KEY=...
-export OCTOPUS_BOOTSTRAP_SERVERS=...
-
-export PROXYSTORE_GLOBUS_CLIENT_ID=...
-export PROXYSTORE_GLOBUS_CLIENT_SECRET=...
+docker compose --profile <name> down
 ```
 
-**3.1.9. Copy `ensure_endpoint.sh` to `~/mof-generation-at-scale`**
+A 15-min run reliably exercises generation, assembly, and the queue round-trip.
+Whether it reaches the MD/DFT stages depends on CPU compute speed — CPU DFT is
+slow (see the DFT-on-CPU note below), so a short run may stop before finishing
+DFT; that's expected, not a fault. The workflow knobs in `scripts/start.sh`
+(`--md-timesteps`, `--gen-batch-size`, `--molecule-sizes`, `--num-epochs`, …)
+are kept in sync with the native benchmark runner
+(`mof-generation-at-scale/bin/run-bench-cloud-vm.sh`) so container and native
+streaming traces are apples-to-apples; the only intended difference is the
+thinker/server split.
 
-Also make the shell script executable: `chmod +x ~/mof-generation-at-scale/ensure_endpoint.sh`
+### Benchmark (timed 1-hour run)
 
-**3.1.10. Configure Workflow Script**
+Benchmarking is **on by default** — `DiasporaQueues` writes one JSON record per
+timed queue op to a per-PID trace. Each profile bind-mounts
+`./bench-out/<profile>` over the workflow's `run/`, so traces land on the host
+and survive `down`.
 
-Edit `example-parallel-run.sh` in `~/mof-generation-at-scale`:
+There is no duration flag — a container run is **wall-clock**: you `up`, wait,
+then `down`. `MOFA_SIM_BUDGET` is the simulation *count* that ends the run early,
+so set it huge to keep the workflow streaming for the whole window;
+`MOFA_QUEUE_PREFIX` is the shared topic prefix both halves meet on.
 
 ```bash
-#! /bin/bash
-
-: "${LAUNCH_OPTION:=both}"
-: "${QUEUE_TYPE:=redis}"
-: "${REDIS_HOST:=127.0.0.1}"
-: "${MONGO_HOST:=localhost}"
-: "${PROXYSTORE_ENDPOINT_NAME:=ep8765}"
-: "${PROXYSTORE_ENDPOINT_PORT:=8765}"
-
-echo "LAUNCH_OPTION:             $LAUNCH_OPTION"
-echo "QUEUE_TYPE:                $QUEUE_TYPE"
-echo "REDIS_HOST:                $REDIS_HOST"
-echo "MONGO_HOST:                $MONGO_HOST"
-echo "PROXYSTORE_ENDPOINT_NAME:  $PROXYSTORE_ENDPOINT_NAME"
-echo "PROXYSTORE_ENDPOINT_PORT:  $PROXYSTORE_ENDPOINT_PORT"
-
-if [[ "$QUEUE_TYPE" == "proxystream" ]]; then
-    source ensure_endpoint.sh $PROXYSTORE_ENDPOINT_NAME $PROXYSTORE_ENDPOINT_PORT
-    echo "PROXYSTORE_ENDPOINT:       $PROXYSTORE_ENDPOINT"
-fi
-
-python run_parallel_workflow.py \
-      --node-path input-files/zn-paddle-pillar/node.json \
-      --generator-path models/geom-300k/geom_difflinker_epoch=997_new.ckpt \
-      --generator-config-path models/geom-300k/config-tf32-a100.yaml \
-      --ligand-templates input-files/zn-paddle-pillar/template_*_prompt.yml \
-      --retrain-freq 2 \
-      --num-epochs 4 \
-      --num-samples 8 \
-      --gen-batch-size 64 \
-      --simulation-budget 4 \
-      --redis-host $REDIS_HOST \
-      --compute-config "local" \
-      --mace-model-path ./input-files/mace/mace-mp0_medium-lammps.pt \
-      --md-timesteps 1000 \
-      --dft-opt-steps 2 \
-      --launch-option $LAUNCH_OPTION \
-      --queue-type $QUEUE_TYPE \
-      --mongo-host $MONGO_HOST
-
+# 1-hour mofka benchmark (loopback bedrock; no credentials)
+MOFA_SIM_BUDGET=100000 MOFA_QUEUE_PREFIX=mofa_bench \
+    docker compose --profile mofka up -d
+sleep 3600                                   # wall-clock; then stop
+docker compose --profile mofka down
+sudo chown -R "$USER" bench-out              # container traces are root-owned
+~/mof-generation-at-scale/bin/analyze-bench.py bench-out/mofka
 ```
 
-### 3.2. Run WOFA Workflow
+For **octopus**, seed the cached Globus tokens first (see the bootstrap section
+below), use a fresh `MOFA_QUEUE_PREFIX`, and clean its topics afterward
+(`tests/smoke_octopus.py --prefix <prefix> --no-rotate-keys`).
 
-#### 3.2.1. Run MOFA Workflow with `RedisQueues`
+The pipeline is compute-gated on CPU DFT, so streaming is busiest in the first
+~10 min and then tapers — the per-op *latencies* are stable regardless of run
+length. Full measured tables live in
+[`chameleon-stream.md` §4](https://github.com/globus-labs/mof-generation-at-scale/blob/diaspora-debug/envs/chameleon-stream.md).
 
-Test Launch Thinker and Server
+## One-time Octopus token bootstrap
+
+`mofa.diaspora.DiasporaQueues` mints fresh AWS keys at startup via
+`GlobusClient.create_key()`, reading cached Globus tokens from
+`~/.diaspora/storage.db`. The first call walks an **interactive Globus login**;
+the `diaspora-storage` named volume persists the tokens for both octopus
+containers thereafter.
 
 ```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-./example-parallel-run.sh
-# OR
-LAUNCH_OPTION=both QUEUE_TYPE=redis ./example-parallel-run.sh
+docker compose --profile octopus run --rm octopus-thinker python tests/smoke_octopus.py
 ```
 
-#### 3.2.2. Reset `mofa_test2` Kafka Topics
+The same script clears stale Kafka topics; re-run it after a crashed workflow
+if librdkafka starts complaining about "Unable to create broker thread".
 
-In a separate virtual environemnt from `mofa` (due to dependency conflicts), install:
-```bash
-pip install playwright
-playwright install-deps
-playwright install chromium
-```
+## Backend / role selection
 
-Create `playwright-secrets.sh` in `~/mofa-mini-app`:
-```bash
-export TOPIC_USERNAME="your_username"
-export TOPIC_PASSWORD="your_password"
-export TOPIC_BASE_URL="http://kafbat-url"
-```
+`scripts/start.sh` reads three env vars (set per service in
+`docker-compose.yml`):
 
-Use Playwright to reset existing Kafka topics:
+| Var | Values | Meaning |
+|---|---|---|
+| `STREAM_ENGINE` | `files` \| `mofka` \| `octopus` | DiasporaQueues backend (passed as `--stream-engine`). |
+| `LAUNCH_OPTION` | `both` \| `thinker` \| `server` | Which half of the workflow runs. |
+| `MOFA_QUEUE_PREFIX` | string | **Shared** topic prefix; thinker and server of one deployment MUST match. |
+
+Supporting vars: `MONGO_HOST` (where the server finds the thinker's mongod),
+`MOFA_MOFKA_GROUP_FILE` (bedrock flock file on the shared volume).
+
+## Local source override
 
 ```bash
-source ~/mofa-mini-app/playwright-secrets.sh
-python ~/mofa-mini-app/playwright-reset-topic-headless.py
+MOFA_SOURCE=local docker compose --profile mofka build
+# then uncomment the bind-mount line under each service's `volumes:` and adjust
+# the host path. start.sh runs the build-time source mutations on first start.
 ```
 
+## Known issues / notes
 
-#### 3.2.3. Run MOFA Workflow with `OctopusQueues`
+See the [`chameleon-stream.md` Troubleshooting table](https://github.com/globus-labs/mof-generation-at-scale/blob/diaspora-debug/envs/chameleon-stream.md#troubleshooting)
+for the upstream gotcha list. Inside Docker specifically:
 
-**3.2.3.1. Run both thinker and server**
-
-```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-LAUNCH_OPTION=thinker QUEUE_TYPE=octopus ./example-parallel-run.sh
-```
-
-**3.2.3.2. Run thinker and server separately**
-
-**Terminal 1: Launch Thinker**
-
-```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-LAUNCH_OPTION=thinker QUEUE_TYPE=octopus ./example-parallel-run.sh
-```
-
-**Terminal 2: Launch Server**
-
-```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-LAUNCH_OPTION=server QUEUE_TYPE=octopus ./example-parallel-run.sh
-```
-
-#### 3.2.4. Run MOFA Workflow with `ProxyQueues`
-
-**3.2.4.1. Run both thinker and server**
-
-```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-LAUNCH_OPTION=thinker QUEUE_TYPE=proxystream ./example-parallel-run.sh
-```
-
-**3.2.4.2. Run thinker and server separately**
-
-**Terminal 1: Launch Thinker**
-
-```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-LAUNCH_OPTION=thinker QUEUE_TYPE=proxystream ./example-parallel-run.sh
-# OR
-LAUNCH_OPTION=thinker QUEUE_TYPE=proxystream PROXYSTORE_ENDPOINT_NAME=ep8766 PROXYSTORE_ENDPOINT_PORT=8766 ./example-parallel-run.sh
-```
-
-**Terminal 2: Launch Server**
-
-```bash
-cd ~/mof-generation-at-scale
-source secrets.sh
-LAUNCH_OPTION=server QUEUE_TYPE=proxystream ./example-parallel-run.sh
-# OR
-LAUNCH_OPTION=server QUEUE_TYPE=proxystream PROXYSTORE_ENDPOINT_NAME=ep8767 PROXYSTORE_ENDPOINT_PORT=8767 ./example-parallel-run.sh
-```
-
-> **Note:** If the endpoint fails to initialize, try modifying `ensure_endpoint.sh` to use `--use-fqdn` instead of `--use-ip`.
-
-## 4. Troubleshooting Errors
-
-### 4.1. Develop Modes and Parameters Summary
-
-| Mode                | QUEUE_TYPE      | LAUNCH_OPTION                | Required Parameters                        | Notes                                 |
-|---------------------|-----------------|------------------------------|--------------------------------------------|---------------------------------------|
-| RedisQueues         | redis           | both                         | REDIS_HOST, MONGO_HOST                     | Only `both` supported                 |
-| OctopusQueues       | octopus         | both / thinker / server      | REDIS_HOST, MONGO_HOST                     | Split or combined mode                |
-| ProxyQueues         | proxystream     | both / thinker / server      | PROXYSTORE_ENDPOINT_NAME, PROXYSTORE_ENDPOINT_PORT, MONGO_HOST | REDIS_HOST not used                   |
-
-
-### 4.2. Troubleshooting Docker errors
-```bash
-docker compose build
-docker compose up 
-# OR
-docker compose up -d
-docker exec -it thinker bash
-echo $LAUNCH_OPTION  $QUEUE_TYPE
-docker compose down
-# OR
-docker build -t octopus2 -f Dockerfile .
-docker run --env-file=secrets.env -it octopus2
-```
-
-### 4.3. Docker Image Structure
-
-```bash
-├── root/
-│   ├── mof-generation-at-scale/
-│   │   ├── example-parallel-run.sh          # Entry script for running the MOFA workflow
-│   │   ├── ensure_endpoint.sh               # Script to ensure ProxyStore endpoint
-│   │   └── mofa/
-│   │       └── hpc/
-│   │           └── config.py                
-│   ├── libtorch/                            
-│   └── lammps/                              
-```
+- **mofka transport** — bedrock uses `ofi+tcp` (loopback), never `na+sm`:
+  `na+sm` deadlocks Parsl-forked workers on `/dev/shm` and is blocked by Yama
+  across containers. This is why the mofka server shares the thinker's network
+  namespace rather than connecting over the compose network (loopback bind is
+  single-host by design; routable multi-host mofka is future work).
+- **Thread caps** — `start.sh` exports `OPENBLAS_NUM_THREADS=1` (and friends)
+  so numpy/MKL don't starve librdkafka / Argobots of threads.
+- **mochi channel tag** — pinned to `2026-05-30` (mofka 0.9.0), in lockstep
+  with mof-generation's `environment-chameleon-stream.yml`; bump `MOCHI_TAG` at
+  your own risk and re-verify with `tests/smoke_stream_env.py` (the build runs it).
+- **LAMMPS libtorch version** — the image compiles `pair_style mace` against
+  libtorch **2.5.1** (pre-cxx11 ABI), whereas the native guide
+  (`chameleon-stream.md` §1c) uses **2.7.1** cxx11-abi. Both load the same
+  `mace-mp0_medium-lammps.pt` and run MD fine; this is an MD-compute detail and
+  does **not** affect the streaming layer the benchmark measures.
+- **One-time Globus login** — required for `octopus` (above). The other two
+  profiles need no credentials.
+- **DFT (cp2k) on CPU** — the image installs conda-forge's serial cp2k (pinned
+  `*nompi*` → cp2k 2024.2, the newest build that still ships `cp2k.ssmp`; an
+  unpinned `conda-forge::cp2k` now resolves to the MPI-only 2026.1 and would
+  break the wrapper) plus a `cp2k_shell.ssmp` wrapper (sets `CP2K_DATA_DIR`,
+  gives CP2K real OpenMP threads), so the DFT stage **runs** end-to-end on a
+  real MOF (energy + forces). Caveat: CPU DFT is *slow* — one MOF's first SCF
+  can dominate wall time, and a large structure (every SCF step is costly) or a
+  non-converging one (grinds to `max_scf`) can keep a short run from finishing
+  its DFT stage. That's a DFT-compute cost, not a transport one. See
+  `mof-generation-at-scale/envs/chameleon-stream.md` §3.
+- **octopus dual AWS key** — the thinker and server each call
+  `GlobusClient.create_key()`, which *rotates* (replaces) the user's single AWS
+  MSK key rather than returning a shared one. Both containers still obtain a
+  working key and the workflow round-trips, but librdkafka logs persistent
+  `SASL … Access denied` churn from whichever key was superseded — noisy but
+  non-fatal. A clean fix (mint once on the thinker, hand the creds to the
+  server) is future work.

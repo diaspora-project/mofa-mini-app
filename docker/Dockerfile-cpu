@@ -1,0 +1,162 @@
+# CPU-only Docker image for the MOFA Diaspora mini-app.
+#
+# Mirrors the bare-metal cloud-VM setup documented in
+# mof-generation-at-scale/envs/chameleon-stream.md. Runs run_parallel_workflow.py
+# with mofa.diaspora.DiasporaQueues against either the `octopus` (AWS MSK
+# Kafka) or `mofka` (local bedrock) backend, selected at runtime via the
+# STREAM_ENGINE env var. See scripts/start.sh.
+
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Build/run deps + MongoDB. The mongodb conda package conflicts with
+# mochi-margo via openssl/icu (see envs/environment-chameleon-stream.yml
+# comment), so mongod is installed via apt. run_parallel_workflow.py
+# spawns its own mongod per run via subprocess.Popen.
+RUN apt-get update \
+ && apt-get install --no-install-recommends -y \
+      ca-certificates curl wget git unzip cmake \
+      build-essential libopenmpi-dev openmpi-bin \
+      intel-mkl libmkl-dev libxrender1 gnupg \
+ && curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
+      | gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg \
+ && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" \
+      > /etc/apt/sources.list.d/mongodb-org-8.0.list \
+ && apt-get update \
+ && apt-get install --no-install-recommends -y mongodb-org \
+ && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Plain miniconda (not mamba — Polaris login-node 128-PID cgroup cap;
+# safer everywhere, per chameleon-stream.md §0).
+RUN mkdir -p /opt/conda \
+ && wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /opt/conda/miniconda.sh \
+ && bash /opt/conda/miniconda.sh -b -u -p /opt/conda \
+ && rm /opt/conda/miniconda.sh
+ENV PATH="/opt/conda/bin:$PATH"
+
+# Stage the mochi-hpc conda channel. Pinned to a release where yokan and
+# diaspora-stream-octopus agree on the libuuid/util-linux pin (see
+# chameleon-stream.md "Troubleshooting"). 2026-05-30 ships mofka 0.9.0 /
+# yokan 0.9.2 / bedrock 0.16.1 and resolves the earlier conflict; keep this in
+# lockstep with environment-chameleon-stream.yml's channel in mof-generation.
+ARG MOCHI_TAG=2026-05-30
+RUN mkdir -p /opt/mochi-conda-packages && cd /opt/mochi-conda-packages \
+ && curl -L "https://github.com/mochi-hpc/mochi-conda-packages/releases/download/${MOCHI_TAG}/mochi-conda-channel-${MOCHI_TAG}-linux-64-py3.12.tar.gz" \
+    | tar -xz --strip-components=1
+
+# Create the conda env. Rewrite the file:// channel URL to the in-image
+# stage location (conda does not expand env vars in channel URLs).
+#
+# `conda tos accept` is required because the env's `defaults` channel maps to
+# repo.anaconda.com/pkgs/{main,r}, and conda >=24.x (shipped by current
+# Miniconda) aborts the solve with CondaToSNonInteractiveError until their
+# Terms of Service are accepted. Non-interactive builds must accept up front.
+COPY envs/environment-cpu.yml /tmp/environment-cpu.yml
+RUN conda tos accept --override-channels \
+      --channel https://repo.anaconda.com/pkgs/main \
+      --channel https://repo.anaconda.com/pkgs/r \
+ && sed -i 's|file:///[^ ]*mochi-conda-packages|file:///opt/mochi-conda-packages|' /tmp/environment-cpu.yml \
+ && CONDA_FETCH_THREADS=1 CONDA_EXTRACT_THREADS=1 \
+    conda env create --file /tmp/environment-cpu.yml --prefix /opt/conda/envs/mofa \
+ && /opt/conda/envs/mofa/bin/pip install ConfigSpace \
+ && conda clean --all --yes
+ENV PATH="/opt/conda/envs/mofa/bin:$PATH"
+
+# libtorch (CPU). lammps loads libtorch at runtime via LD_LIBRARY_PATH,
+# independent of conda's torch.
+RUN cd /opt && wget -q https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.5.1%2Bcpu.zip -O libtorch.zip \
+ && unzip -q libtorch.zip && rm libtorch.zip
+
+# LAMMPS+MACE build.
+RUN cd /opt && git clone --branch mace --depth=1 https://github.com/ACEsuit/lammps \
+ && cd lammps && mkdir build-mace && cd build-mace \
+ && cmake -DCMAKE_INSTALL_PREFIX=$(pwd) \
+      -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+      -DBUILD_MPI=ON -DBUILD_OMP=ON -DPKG_OPENMP=ON -DPKG_ML-MACE=ON \
+      -DCMAKE_PREFIX_PATH=/opt/libtorch \
+      -DMKL_INCLUDE_DIR=/usr/include/mkl \
+      ../cmake \
+ && make -j$(nproc) && make install \
+ && LD_LIBRARY_PATH=/opt/libtorch/lib:$LD_LIBRARY_PATH ./bin/lmp -h | grep mace
+
+# CP2K (DFT), conda-forge — installed in its OWN layer AFTER the LAMMPS build.
+# conda-forge cp2k pulls a conda libtorch whose headers (`$CONDA_PREFIX/include/
+# torch`) collide with the standalone /opt/libtorch the LAMMPS+MACE build above
+# compiles against (duplicate `torch::kI64` etc.). Building LAMMPS first against
+# /opt/libtorch alone, then adding cp2k, sidesteps the clash. Pin the `*nompi*`
+# build so we get the serial+OpenMP `cp2k.ssmp` (not the MPI `cp2k.psmp`) that
+# the cp2k_shell.ssmp wrapper and CloudVMConfig expect.
+RUN conda install -n mofa -y -c conda-forge 'cp2k=*=*nompi*' \
+ && conda clean --all --yes
+
+# Bring in the MOFA source. Placed AFTER the conda/LAMMPS/cp2k layers so a new
+# MOFA commit (or a MOFA_BRANCH bump) rebuilds only the cheap source-install
+# tail below — not those multi-minute layers, which don't depend on the source.
+# Two paths via build arg:
+#   MOFA_SOURCE=remote (default): git clone + checkout MOFA_BRANCH at build.
+#   MOFA_SOURCE=local           : docker-compose bind-mounts the host clone
+#                                 over /opt/mof-generation-at-scale at runtime
+#                                 — no clone here; start.sh runs the setup.
+ARG MOFA_SOURCE=remote
+ARG MOFA_BRANCH=diaspora-debug
+ARG MOFA_REMOTE=https://github.com/globus-labs/mof-generation-at-scale.git
+# Bump to re-pull MOFA_BRANCH (e.g. --build-arg CACHEBUST=$(date +%s)) after a
+# push, without busting the cached conda/LAMMPS/cp2k layers above.
+ARG CACHEBUST=0
+RUN echo "cachebust=$CACHEBUST" && if [ "$MOFA_SOURCE" = "remote" ]; then \
+      git clone "$MOFA_REMOTE" /opt/mof-generation-at-scale \
+      && cd /opt/mof-generation-at-scale && git checkout "$MOFA_BRANCH" ; \
+    else \
+      mkdir -p /opt/mof-generation-at-scale ; \
+    fi
+
+# Script-INDEPENDENT half of the at-build source mutation. Only when
+# MOFA_SOURCE=remote; for local bind-mounts, scripts/start.sh does the
+# equivalent at first start. Kept *above* `COPY scripts/` so iterating on the
+# helper scripts does not bust the expensive conda/LAMMPS cache layers.
+#
+# The `sed` drops `--format mliap` from get-macemp-0a.sh: upstream targets
+# Polaris's ML-IAP LAMMPS, but this image builds the ACEsuit `mace` LAMMPS
+# (PKG_ML-MACE → pair_style mace, which loads the *libtorch* format). mliap
+# also crashes mace-torch 0.3.13's cueq converter on the 2023 mace-mp-0 model;
+# the default `libtorch` format is what pair_style mace wants and converts cleanly.
+RUN if [ "$MOFA_SOURCE" = "remote" ]; then \
+      /opt/conda/envs/mofa/bin/pip install -e "/opt/mof-generation-at-scale[test]" \
+      && sed -i "s|~/libtorch|/opt/libtorch|g; s|~/lammps/build-mace/bin/lmp|/opt/lammps/build-mace/bin/lmp|g" \
+          /opt/mof-generation-at-scale/mofa/hpc/config.py \
+      && cd /opt/mof-generation-at-scale/input-files/zn-paddle-pillar \
+      && /opt/conda/envs/mofa/bin/python assemble_inputs.py \
+      && cd /opt/mof-generation-at-scale/input-files/mace \
+      && sed -i 's| --format mliap||' get-macemp-0a.sh \
+      && ./get-macemp-0a.sh ; \
+    fi
+
+# CP2K (DFT) shell wrapper. conda-forge ships only `cp2k.ssmp`, but ASE's CP2K
+# calculator asserts the launch command contains `cp2k_shell` and needs
+# CP2K_DATA_DIR set — without both, run_optimization fails with a bare
+# AssertionError before CP2K runs. mof-gen's bin/install-cp2k-shell-wrapper.sh
+# drops a `cp2k_shell.ssmp` into the env's bin/ that fixes both (and raises
+# OMP threads for CP2K). scripts/start.sh points MOFA_CP2K_BIN at it.
+RUN if [ "$MOFA_SOURCE" = "remote" ]; then \
+      CONDA_PREFIX=/opt/conda/envs/mofa \
+        bash /opt/mof-generation-at-scale/bin/install-cp2k-shell-wrapper.sh ; \
+    fi
+
+# Helper scripts (entrypoint + role/backend wiring). Copied late so editing
+# them rebuilds only the small layers below, not the multi-minute conda env /
+# LAMMPS builds above.
+COPY scripts/ /opt/scripts/
+RUN chmod +x /opt/scripts/*.sh
+
+# Mark the image prebuilt so scripts/start.sh skips the local-bind-mount
+# first-start setup. (The thinker/server split is selected at runtime via
+# --launch-option / --mongo-host / --queue-prefix; see scripts/start.sh.)
+RUN if [ "$MOFA_SOURCE" = "remote" ]; then touch /opt/.mofa-prebuilt ; fi
+
+# Build-time sanity check — fails fast if any stream import is missing.
+RUN if [ "$MOFA_SOURCE" = "remote" ]; then \
+      /opt/conda/envs/mofa/bin/python /opt/mof-generation-at-scale/tests/smoke_stream_env.py ; \
+    fi
+
+WORKDIR /opt/mof-generation-at-scale
+# No ENTRYPOINT/CMD — docker-compose `command:` per service picks the backend.

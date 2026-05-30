@@ -3,3 +3,9 @@
 /mof-generation-at-scale
 *secrets.sh
 secrets.env
+
+# podman rootless residue on Polaris login nodes
+/libpod/
+
+# benchmark trace output (runtime)
+bench-out/
